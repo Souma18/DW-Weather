@@ -1,0 +1,9 @@
+{
+    "python.analysis.extraPaths": [
+        "./venv/clean",
+        "./venv/clean/weather/raw/db_",
+        "./venv/clean/weather/raw/db_",
+        "./venv/clean/db_"
+    ],
+    "git.ignoreLimitWarning": true
+}
