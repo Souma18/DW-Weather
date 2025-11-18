@@ -1,0 +1,8 @@
+# File này chứa danh sách các links JSON cần extract
+# Mỗi link một dòng
+# Dòng bắt đầu bằng # là comment và sẽ bị bỏ qua
+# 
+# Ví dụ:
+# https://example.com/api/thunderstorms.json
+# https://example.com/api/rainfall.json
+

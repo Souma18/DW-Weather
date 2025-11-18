@@ -1,0 +1,4 @@
+pytest
+setuptools
+wheel
+requests>=2.28.0
