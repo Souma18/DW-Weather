@@ -117,9 +117,69 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
             data_type = json_data.get("type", "unknown")
             fields = json_data.get("fields", [])
             
+            # Xử lý trường hợp không có fields - có thể là format tropical cyclone detail
             if not fields:
-                print(f"    Cảnh báo: Không tìm thấy 'fields' trong JSON, bỏ qua link này")
-                continue
+                # Kiểm tra xem có phải là format tropical cyclone detail không
+                if "track" in json_data or "forecast" in json_data:
+                    sys_id = json_data.get("sys_id", "unknown")
+                    data_type = f"tropical cyclone detail_{sys_id}"
+                    
+                    # Xử lý track và forecast riêng biệt
+                    csv_files_for_url = []
+                    
+                    # Xử lý track
+                    if "track" in json_data and isinstance(json_data["track"], list) and len(json_data["track"]) > 0:
+                        track_records = json_data["track"]
+                        track_fields = list(track_records[0].keys())  # Lấy fields từ object đầu tiên
+                        
+                        safe_type = f"tropical_cyclone_track_{sys_id}".replace("/", "_").replace("\\", "_").replace(":", "_")
+                        base_filename = f"{safe_type}_{current_timestamp}"
+                        csv_filename = f"{base_filename}.csv"
+                        csv_path = output_dir / csv_filename
+                        
+                        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                            writer = csv.writer(csvfile)
+                            writer.writerow(track_fields)
+                            
+                            for record in track_records:
+                                row = [record.get(field, "") for field in track_fields]
+                                writer.writerow(row)
+                        
+                        print(f"   Đã tạo: {csv_path}")
+                        print(f"  Số records: {len(track_records)}, Type: tropical cyclone track, Fields: {len(track_fields)}")
+                        csv_files_for_url.append(str(csv_path))
+                    
+                    # Xử lý forecast
+                    if "forecast" in json_data and isinstance(json_data["forecast"], list) and len(json_data["forecast"]) > 0:
+                        forecast_records = json_data["forecast"]
+                        forecast_fields = list(forecast_records[0].keys())
+                        
+                        safe_type = f"tropical_cyclone_forecast_{sys_id}".replace("/", "_").replace("\\", "_").replace(":", "_")
+                        base_filename = f"{safe_type}_{current_timestamp}"
+                        csv_filename = f"{base_filename}.csv"
+                        csv_path = output_dir / csv_filename
+                        
+                        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                            writer = csv.writer(csvfile)
+                            writer.writerow(forecast_fields)
+                            
+                            for record in forecast_records:
+                                row = [record.get(field, "") for field in forecast_fields]
+                                writer.writerow(row)
+                        
+                        print(f"   Đã tạo: {csv_path}")
+                        print(f"  Số records: {len(forecast_records)}, Type: tropical cyclone forecast, Fields: {len(forecast_fields)}")
+                        csv_files_for_url.append(str(csv_path))
+                    
+                    if csv_files_for_url:
+                        csv_files.extend(csv_files_for_url)
+                        continue
+                    else:
+                        print(f"    Cảnh báo: Không tìm thấy dữ liệu track hoặc forecast, bỏ qua link này")
+                        continue
+                else:
+                    print(f"    Cảnh báo: Không tìm thấy 'fields' trong JSON và không phải format đặc biệt, bỏ qua link này")
+                    continue
             
             # Tạo tên file: {type}_{timestamp}.csv
             # Sanitize type để tránh ký tự không hợp lệ trong tên file (như "/" trong "heavyrain/snow")
@@ -137,11 +197,11 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
                 # Ghi header
                 writer.writerow(fields)
                 
-                # Ghi dữ liệu từ các timestamp keys
-                # Bỏ qua các key không phải timestamp (type, fields)
+                # Ghi dữ liệu từ các timestamp keys hoặc key đặc biệt
+                # Bỏ qua các key không phải dữ liệu (type, fields, update, sys_id, gts)
                 total_records = 0
                 for key in json_data.keys():
-                    if key not in ["type", "fields"]:
+                    if key not in ["type", "fields", "update", "sys_id", "gts"]:
                         records = json_data[key]
                         if isinstance(records, list):
                             for record in records:

@@ -1,0 +1,4 @@
+analysis_time,intensity,tc_name,tc_id,lat,lng,speed_of_movement,movement_direction,pressure,max_wind_speed,gust,wind_radii,center_id
+2025-11-18 00:00:00,low,,02U,-10.200000000,130.300000000,5,ENE,999,30,45,,8
+2025-11-18 06:00:00,low,,02U,-10.000000000,130.600000000,5,ENE,998,30,45,,8
+2025-11-18 12:00:00,low,,02U,-9.900000000,131.150000000,4,ENE,996,35,50,34.0 kt;;50nm|NEQ;;40nm|NWQ,8

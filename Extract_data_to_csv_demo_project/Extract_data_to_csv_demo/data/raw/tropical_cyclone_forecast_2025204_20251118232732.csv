@@ -1,0 +1,11 @@
+time_interval,intensity,lat,lng,speed_of_movement,movement_direction,pressure,max_wind_speed,gust,wind_radii,forecast_time
+0600,category 1,-9.690000000,131.500000000,,,993,40,55,34.0 kt;;50nm|NEQ;;40nm|SEQ;;40nm|NWQ,
+1200,category 1,-9.500000000,131.870000000,,,990,45,65,34.0 kt;;60nm|NEQ;;60nm|SEQ;;60nm|SWQ;;60nm|NWQ,
+1800,category 1,-9.360000000,132.250000000,,,990,45,65,34.0 kt;;60nm|NEQ;;60nm|SEQ;;60nm|SWQ;;60nm|NWQ,
+2400,category 2,-9.260000000,132.600000000,,,986,50,70,34.0 kt;;60nm|NEQ;;60nm|SEQ;;60nm|SWQ;;60nm|NWQ##48.0 kt;;30nm|NEQ;;30nm|SEQ;;30nm|SWQ;;30nm|NWQ,
+3600,category 2,-9.210000000,133.120000000,,,983,55,75,34.0 kt;;60nm|NEQ;;60nm|SEQ;;60nm|SWQ;;60nm|NWQ##48.0 kt;;30nm|NEQ;;30nm|SEQ;;30nm|SWQ;;30nm|NWQ,
+4800,category 2,-9.470000000,133.530000000,,,979,60,85,34.0 kt;;60nm|NEQ;;60nm|SEQ;;60nm|SWQ;;60nm|NWQ##48.0 kt;;30nm|NEQ;;30nm|SEQ;;30nm|SWQ;;30nm|NWQ,
+6000,category 2,-10.060000000,133.390000000,,,979,60,85,34.0 kt;;70nm|NEQ;;70nm|SEQ;;70nm|SWQ;;70nm|NWQ##48.0 kt;;30nm|NEQ;;30nm|SEQ;;30nm|SWQ;;30nm|NWQ,
+7200,category 2,-10.720000000,132.960000000,,,980,60,85,34.0 kt;;70nm|NEQ;;60nm|SEQ;;60nm|SWQ;;70nm|NWQ##48.0 kt;;30nm|NEQ;;30nm|SEQ;;30nm|SWQ;;30nm|NWQ,
+9600,category 2,-11.900000000,131.310000000,,,987,50,70,34.0 kt;;70nm|NEQ;;40nm|SEQ;;40nm|SWQ;;70nm|NWQ##48.0 kt;;20nm|NEQ;;20nm|SEQ;;20nm|SWQ;;20nm|NWQ,
+12000,category 2,-12.660000000,129.620000000,,,987,50,70,34.0 kt;;50nm|NEQ;;40nm|SEQ;;50nm|SWQ;;50nm|NWQ##48.0 kt;;20nm|NEQ;;20nm|SEQ;;20nm|SWQ;;20nm|NWQ,

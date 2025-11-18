@@ -1,9 +1,6 @@
 # Danh sách links dữ liệu thời tiết từ WMO Severe Weather
 # Các links này cung cấp dữ liệu về các hiện tượng thời tiết cực đoan
 
-# No Warning - Không có cảnh báo
-https://severeweather.wmo.int/json/nowarning.json?_=1763476735105
-
 # Heavy Rain/Snow - Mưa lớn/Tuyết lớn
 https://severeweather.wmo.int/json/hvyrain.json?_=1763476735106
 
