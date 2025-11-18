@@ -1,0 +1,14 @@
+.venv/
+airflow_env/
+Weather_airflow_project/.venv/
+Weather_airflow_project/.airflow/
+airflow_home/
+logs/
+*.db
+.env
+__pycache__/
+.pytest_cache/
+.DS_Store
+.idea/
+.vscode/
+
