@@ -15,13 +15,13 @@ Mỗi model có comment tiếng Việt nhỏ để dễ hiểu và có các rela
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Numeric, Text
 from sqlalchemy.orm import relationship
 
-from database import Base
+from database import BaseTransform
 
 
 # ------------------------
 # Dimension: DimLocation
 # ------------------------
-class DimLocation(Base):
+class DimLocation(BaseTransform):
     __tablename__ = "dim_location"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="Khóa chính")
@@ -31,6 +31,8 @@ class DimLocation(Base):
     hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
     country = Column(String(100), nullable=True, comment="Quốc gia")
     gc = Column(String(100), nullable=True, comment="Mã địa lý hoặc khu vực")
+    updatedAt = Column(DateTime, nullable=True)
+
 
     # Relationship tới các bảng fact tham chiếu location
     heavy_rains = relationship("FactHeavyRain", back_populates="location", cascade="all, delete-orphan")
@@ -45,7 +47,7 @@ class DimLocation(Base):
 # ------------------------
 # Dimension: DimCyclone
 # ------------------------
-class DimCyclone(Base):
+class DimCyclone(BaseTransform):
     __tablename__ = "dim_cyclone"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="Khóa chính định danh cơn bão")
@@ -65,7 +67,7 @@ class DimCyclone(Base):
 # ------------------------
 # Fact tables
 # ------------------------
-class FactHeavyRain(Base):
+class FactHeavyRain(BaseTransform):
     __tablename__ = "fact_heavy_rain"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -80,7 +82,7 @@ class FactHeavyRain(Base):
         return f"<FactHeavyRain(id={self.id}, location_id={self.location_id}, event={self.event_datetime})>"
 
 
-class FactThunderstorm(Base):
+class FactThunderstorm(BaseTransform):
     __tablename__ = "fact_thunderstorm"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -95,7 +97,7 @@ class FactThunderstorm(Base):
         return f"<FactThunderstorm(id={self.id}, location_id={self.location_id})>"
 
 
-class FactFog(Base):
+class FactFog(BaseTransform):
     __tablename__ = "fact_fog"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -111,7 +113,7 @@ class FactFog(Base):
         return f"<FactFog(id={self.id}, location_id={self.location_id})>"
 
 
-class FactGale(Base):
+class FactGale(BaseTransform):
     __tablename__ = "fact_gale"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -129,7 +131,7 @@ class FactGale(Base):
         return f"<FactGale(id={self.id}, location_id={self.location_id})>"
 
 
-class FactCycloneTrack(Base):
+class FactCycloneTrack(BaseTransform):
     __tablename__ = "fact_cyclone_track"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
