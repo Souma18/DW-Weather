@@ -1,0 +1,20 @@
+version: '3.9'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_etl_staging
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 1      # mật khẩu root
+      MYSQL_USER: etl_user                   # user cho ETL
+      MYSQL_PASSWORD: etl_password           # mật khẩu của user
+    ports:
+      - "3306:3306"                          # ánh xạ port 3306 ra ngoài
+    volumes:
+      - mysql_data:/var/lib/mysql            # volume chứa dữ liệu MySQL
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql # (tùy chọn) script khởi tạo DB
+
+volumes:
+  mysql_data:
+    driver: local

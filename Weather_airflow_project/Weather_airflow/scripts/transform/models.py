@@ -31,8 +31,7 @@ class DimLocation(BaseTransform):
     hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
     country = Column(String(100), nullable=True, comment="Quốc gia")
     gc = Column(String(100), nullable=True, comment="Mã địa lý hoặc khu vực")
-    updatedAt = Column(DateTime, nullable=True)
-
+    createdAt = Column(DateTime, nullable=True)
 
     # Relationship tới các bảng fact tham chiếu location
     heavy_rains = relationship("FactHeavyRain", back_populates="location", cascade="all, delete-orphan")

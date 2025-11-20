@@ -13,8 +13,7 @@ with session_scope(SessionELT) as session:
     ).all()
     if not success_logs:
         transform_log = TransformLog(
-            run_date=datetime.now(),
-            status="Fail",
+            status="Failure",
             record_count=0,
             message="Hôm nay job clean chưa có dữ liệu mới.",
             start_at=datetime.combine(datetime.today(), datetime.min.time()),
