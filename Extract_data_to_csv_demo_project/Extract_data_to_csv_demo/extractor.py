@@ -10,6 +10,144 @@ from pathlib import Path
 from typing import List, Dict, Any
 import requests
 from urllib.parse import urlparse
+import re
+
+
+# Mapping các loại dữ liệu sang tên viết tắt (tùy chọn)
+TYPE_ABBREVIATIONS = {
+    "tropical cyclone": "tc",
+    "tropical cyclone detail": "tc_detail",
+    "tropical cyclone track": "tc_track",
+    "tropical cyclone forecast": "tc_forecast",
+    "heavyrain/snow": "heavyrain_snow",
+    "heavyrain": "heavyrain",
+    "snow": "snow",
+    "thunderstorms": "thunderstorms",
+    "gale": "gale",
+    "fog": "fog",
+}
+
+
+def sanitize_filename(name: str, use_abbreviations: bool = False) -> str:
+    """
+    Xử lý và chuẩn hóa tên file từ dữ liệu đầu vào.
+    
+    Quy tắc đặt tên:
+    - Khoảng trắng được thay bằng dấu gạch dưới (_)
+    - Các ký tự đặc biệt không hợp lệ cho tên file được thay bằng dấu gạch dưới
+    - Nhiều dấu gạch dưới liên tiếp được gộp thành một
+    - Loại bỏ dấu gạch dưới ở đầu và cuối
+    
+    Args:
+        name: Tên gốc từ dữ liệu (có thể có khoảng trắng, ký tự đặc biệt)
+        use_abbreviations: Nếu True, sử dụng viết tắt từ TYPE_ABBREVIATIONS nếu có
+    
+    Returns:
+        Tên file đã được chuẩn hóa, an toàn để sử dụng
+    """
+    # Áp dụng viết tắt nếu có và được bật
+    if use_abbreviations:
+        name_lower = name.lower().strip()
+        # Tìm kiếm khớp một phần (để xử lý trường hợp có thêm thông tin như sys_id)
+        for full_name, abbrev in TYPE_ABBREVIATIONS.items():
+            if full_name.lower() in name_lower:
+                # Thay thế phần khớp bằng viết tắt
+                name = name.replace(full_name, abbrev)
+                break
+    
+    # Thay thế khoảng trắng bằng dấu gạch dưới
+    name = name.replace(" ", "_")
+    
+    # Thay thế các ký tự đặc biệt không hợp lệ cho tên file
+    # Windows không cho phép: < > : " / \ | ? *
+    # Thêm các ký tự khác có thể gây vấn đề
+    invalid_chars = r'[<>:"/\\|?*\x00-\x1f]'
+    name = re.sub(invalid_chars, "_", name)
+    
+    # Gộp nhiều dấu gạch dưới liên tiếp thành một
+    name = re.sub(r'_+', '_', name)
+    
+    # Loại bỏ dấu gạch dưới ở đầu và cuối
+    name = name.strip('_')
+    
+    # Đảm bảo tên file không rỗng
+    if not name:
+        name = "unknown"
+    
+    return name
+
+
+def build_filename(data_type: str, timestamp: str, run_number: int,
+                   use_abbreviations: bool = False) -> str:
+    """
+    Xây dựng tên file CSV từ các thành phần.
+    
+    Format: {sanitized_type}-{timestamp}-run{run_number}.csv
+    
+    Ví dụ:
+        tc-20251118_143022-run1.csv
+        fog-20251118_143045-run2.csv
+    
+    - Dùng dấu gạch ngang (-) để phân tách các đoạn khác nhau (type và timestamp)
+    - Dùng dấu gạch dưới (_) để phân tách từ trong cùng một đoạn
+    
+    Args:
+        data_type: Loại dữ liệu (có thể có khoảng trắng, ký tự đặc biệt)
+        timestamp: Timestamp dạng YYYYMMDD_HHMMSS
+        run_number: Lần chạy trong ngày (run1, run2, ...)
+        use_abbreviations: Có sử dụng viết tắt không
+    
+    Returns:
+        Tên file đã được xây dựng (không có extension .csv)
+    """
+    # Sanitize data_type
+    safe_type = sanitize_filename(data_type, use_abbreviations)
+    
+    # Xây dựng tên file
+    # Dùng dấu gạch ngang để phân tách các đoạn chính
+    # Format cuối: {type}-{YYYYMMDD_HHMMSS}-run{N}
+    filename = f"{safe_type}-{timestamp}-run{run_number}"
+    
+    return filename
+
+
+def get_next_run_number(output_dir: Path) -> int:
+    """
+    Xác định số lần chạy tiếp theo (runN) trong thư mục output hiện tại.
+    
+    Dựa trên các file có format: *-runN.csv, lấy N lớn nhất và +1.
+    Nếu chưa có file nào phù hợp, trả về 1.
+    
+    Args:
+        output_dir: Thư mục chứa các file CSV của ngày hiện tại
+    
+    Returns:
+        Số lần chạy tiếp theo (int >= 1)
+    """
+    max_run = 0
+    
+    if not output_dir.exists():
+        return 1
+    
+    for path in output_dir.glob("*.csv"):
+        stem = path.stem  # Tên file không có .csv
+        parts = stem.split("-")
+        if not parts:
+            continue
+        
+        last_part = parts[-1]
+        if last_part.startswith("run"):
+            # Lấy phần số phía sau "run"
+            number_part = last_part[3:]
+            try:
+                run_index = int(number_part)
+            except ValueError:
+                continue
+            
+            if run_index > max_run:
+                max_run = run_index
+    
+    return max_run + 1
 
 
 def load_links_from_file(file_path: str = None) -> List[str]:
@@ -70,10 +208,18 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
     """
     Nhận danh sách links, tải JSON từ mỗi link và convert sang CSV.
     
-    Mỗi CSV file sẽ có tên: {type}_{YYYYMMDDHHMMSS}.csv
+    Cấu trúc thư mục + tên file:
+    
+    - Thư mục theo ngày: raw/YYYYMMDD/
+        Ví dụ: data/raw/20251118/
+    
+    - Mỗi CSV file sẽ có tên: {sanitized_type}-{YYYYMMDD_HHMMSS}-runN.csv
     Trong đó:
-        - type: loại dữ liệu từ trường "type" trong JSON
-        - YYYYMMDDHHMMSS: timestamp hiện tại khi tạo file
+        - sanitized_type: loại dữ liệu đã được chuẩn hóa (khoảng trắng -> _, ký tự đặc biệt -> _)
+        - YYYYMMDD_HHMMSS: timestamp thời điểm bắt đầu chạy batch
+        - runN: số lần chạy trong ngày (run1, run2, ...)
+      Dùng dấu gạch ngang (-) để phân tách các đoạn khác nhau
+      Dùng dấu gạch dưới (_) để phân tách từ trong cùng một đoạn
     
     Args:
         links: Danh sách URLs chứa JSON data
@@ -82,15 +228,25 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
     Returns:
         List các đường dẫn file CSV đã tạo
     """
+    # Thư mục gốc lưu dữ liệu raw
     if output_dir is None:
-        output_dir = Path(__file__).parent / "data" / "raw"
+        base_output_dir = Path(__file__).parent / "data" / "raw"
     else:
-        output_dir = Path(output_dir)
+        base_output_dir = Path(output_dir)
     
+    # Xác định thời điểm chạy batch hiện tại
+    run_datetime = datetime.now()
+    run_date_str = run_datetime.strftime("%Y%m%d")         # Dùng cho tên thư mục ngày
+    run_timestamp = run_datetime.strftime("%Y%m%d_%H%M%S") # Dùng cho tên file
+    
+    # Thư mục theo ngày: raw/YYYYMMDD/
+    output_dir = base_output_dir / run_date_str
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Xác định số lần chạy (runN) trong ngày hiện tại
+    run_number = get_next_run_number(output_dir)
+    
     csv_files = []
-    current_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     
     for idx, url in enumerate(links, 1):
         print(f"\n[{idx}/{len(links)}] Đang xử lý: {url}")
@@ -132,8 +288,15 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
                         track_records = json_data["track"]
                         track_fields = list(track_records[0].keys())  # Lấy fields từ object đầu tiên
                         
-                        safe_type = f"tropical_cyclone_track_{sys_id}".replace("/", "_").replace("\\", "_").replace(":", "_")
-                        base_filename = f"{safe_type}_{current_timestamp}"
+                        # Gắn sys_id vào data_type để phân biệt hệ thống bão
+                        # Ví dụ sau khi chuẩn hóa + viết tắt: tc_track_2025204-20251118_143022-run1.csv
+                        data_type = f"tropical cyclone track_{sys_id}"
+                        base_filename = build_filename(
+                            data_type=data_type,
+                            timestamp=run_timestamp,
+                            run_number=run_number,
+                            use_abbreviations=True,
+                        )
                         csv_filename = f"{base_filename}.csv"
                         csv_path = output_dir / csv_filename
                         
@@ -154,8 +317,15 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
                         forecast_records = json_data["forecast"]
                         forecast_fields = list(forecast_records[0].keys())
                         
-                        safe_type = f"tropical_cyclone_forecast_{sys_id}".replace("/", "_").replace("\\", "_").replace(":", "_")
-                        base_filename = f"{safe_type}_{current_timestamp}"
+                        # Gắn sys_id vào data_type để phân biệt hệ thống bão
+                        # Ví dụ: tc_forecast_2025204-20251118_143022-run1.csv
+                        data_type = f"tropical cyclone forecast_{sys_id}"
+                        base_filename = build_filename(
+                            data_type=data_type,
+                            timestamp=run_timestamp,
+                            run_number=run_number,
+                            use_abbreviations=True,
+                        )
                         csv_filename = f"{base_filename}.csv"
                         csv_path = output_dir / csv_filename
                         
@@ -181,12 +351,14 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
                     print(f"    Cảnh báo: Không tìm thấy 'fields' trong JSON và không phải format đặc biệt, bỏ qua link này")
                     continue
             
-            # Tạo tên file: {type}_{timestamp}.csv
-            # Sanitize type để tránh ký tự không hợp lệ trong tên file (như "/" trong "heavyrain/snow")
-            safe_type = str(data_type).replace("/", "_").replace("\\", "_").replace(":", "_")
-            base_filename = f"{safe_type}_{current_timestamp}"
-            if idx > 1:
-                base_filename = f"{base_filename}_{idx}"
+            # Tạo tên file sử dụng hàm build_filename
+            # Format: {type}-{YYYYMMDD_HHMMSS}-runN.csv
+            base_filename = build_filename(
+                data_type=data_type,
+                timestamp=run_timestamp,
+                run_number=run_number,
+                use_abbreviations=True,
+            )
             csv_filename = f"{base_filename}.csv"
             csv_path = output_dir / csv_filename
             
