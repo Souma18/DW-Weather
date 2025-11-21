@@ -11,6 +11,11 @@ from typing import List, Dict, Any
 import requests
 from urllib.parse import urlparse
 import re
+from db import SessionLocal
+from log_service import LogService
+from sqlalchemy import func
+from models import LogExtractRun
+
 
 
 # Mapping các loại dữ liệu sang tên viết tắt (tùy chọn)
@@ -204,7 +209,12 @@ def extract_json_from_url(url: str) -> Dict[str, Any]:
         raise
 
 
-def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
+def extract_jsons_to_csv(
+    links: List[str],
+    output_dir: str = None,
+    run_datetime: datetime | None = None,
+    run_number: int | None = None,
+) -> List[str]:
     """
     Nhận danh sách links, tải JSON từ mỗi link và convert sang CSV.
     
@@ -224,6 +234,10 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
     Args:
         links: Danh sách URLs chứa JSON data
         output_dir: Thư mục lưu file CSV. Nếu None, sẽ lưu vào data/raw/
+        run_datetime: Thời điểm chạy batch (dùng chung cho tất cả file trong một lần chạy).
+                      Nếu None, sẽ dùng thời điểm hiện tại.
+        run_number: Số lần chạy trong ngày (run1, run2, ...).
+                    Nếu None, sẽ tự tính dựa trên các file đã có trong thư mục ngày.
     
     Returns:
         List các đường dẫn file CSV đã tạo
@@ -234,8 +248,10 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
     else:
         base_output_dir = Path(output_dir)
     
-    # Xác định thời điểm chạy batch hiện tại
-    run_datetime = datetime.now()
+    # Nếu caller không truyền thì tự lấy thời điểm hiện tại
+    if run_datetime is None:
+        run_datetime = datetime.now()
+
     run_date_str = run_datetime.strftime("%Y%m%d")         # Dùng cho tên thư mục ngày
     run_timestamp = run_datetime.strftime("%Y%m%d_%H%M%S") # Dùng cho tên file
     
@@ -243,8 +259,9 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
     output_dir = base_output_dir / run_date_str
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Xác định số lần chạy (runN) trong ngày hiện tại
-    run_number = get_next_run_number(output_dir)
+    # Nếu caller không truyền run_number thì mới tự tính
+    if run_number is None:
+        run_number = get_next_run_number(output_dir)
     
     csv_files = []
     
@@ -386,50 +403,163 @@ def extract_jsons_to_csv(links: List[str], output_dir: str = None) -> List[str]:
             csv_files.append(str(csv_path))
             
         except Exception as e:
-            print(f"  ❌ Lỗi khi xử lý {url}: {e}")
+            print(f"   Lỗi khi xử lý {url}: {e}")
             continue
     
     return csv_files
 
 
+
 def run(links_file_path: str = None, output_dir: str = None) -> None:
     """
-    Hàm chính để chạy toàn bộ quá trình extract.
-    
-    Quy trình:
-    1. Load danh sách links từ file
-    2. Extract JSON từ các links và convert sang CSV
-    
-    Args:
-        links_file_path: Đường dẫn đến file chứa links. Nếu None, tự động tìm trong data/load_link/
-        output_dir: Thư mục lưu file CSV. Nếu None, lưu vào data/raw/
+    Hàm chính để chạy extract JSON -> CSV, kèm ghi log vào DB.
     """
     print("=" * 60)
-    print("BẮT ĐẦU EXTRACT DỮ LIỆU TỪ JSON SANG CSV")
+    print("BẮT ĐẦU EXTRACT DỮ LIỆU TỪ JSON SANG CSV (VỚI LOGGING)")
     print("=" * 60)
-    
+
+    session = SessionLocal()
+    log = LogService(session)
+    run_entry = None  # tránh UnboundLocalError trong khối except
+
     try:
         # Bước 1: Load danh sách links
         print("\n[Bước 1] Đang load danh sách links...")
         links = load_links_from_file(links_file_path)
-        
         if not links:
             print("⚠️  Không có links để xử lý!")
             return
-        
-        # Bước 2: Extract JSON và convert sang CSV
-        print(f"\n[Bước 2] Đang extract {len(links)} links sang CSV...")
-        csv_files = extract_jsons_to_csv(links, output_dir)
-        
-        # Tổng kết
-        print("\n" + "=" * 60)
-        print("HOÀN THÀNH!")
-        print("=" * 60)
-        print(f" Đã tạo {len(csv_files)} file CSV:")
-        for csv_file in csv_files:
-            print(f"   - {csv_file}")
-        
-    except Exception as e:
-        print(f"\n❌ Lỗi trong quá trình xử lý: {e}")
-        raise
 
+        # Xác định thời điểm và run_number cho lần chạy hiện tại
+        now = datetime.now()
+        today = now.date()
+        job_name = "extract_json_to_csv"
+
+        # Lấy run_number từ DB log: MAX(run_number) trong ngày hiện tại + 1
+        max_run = (
+            session.query(func.max(LogExtractRun.run_number))
+            .filter(
+                LogExtractRun.run_date == today,
+                LogExtractRun.job_name == job_name,
+            )
+            .scalar()
+        )
+        run_number = (max_run or 0) + 1
+
+        # Tạo entry run log (khớp với LogService.create_run)
+        run_entry = log.create_run(
+            job_name=job_name,
+            run_number=run_number,
+            started_at=now,
+            status="RUNNING",
+            created_at=now,
+        )
+        print(f"RUN ID: {run_entry.id}")
+
+        # Bước 2: Extract JSON -> CSV kèm log events (1 file = 1 event)
+        csv_files: list[str] = []
+
+        for idx, url in enumerate(links, 1):
+            print(f"\n[{idx}/{len(links)}] Đang xử lý: {url}")
+
+            start_time = datetime.now()
+
+            try:
+                # Extract 1 URL sang CSV (có thể sinh 0/1/n file)
+                files_created = extract_jsons_to_csv(
+                    [url],
+                    output_dir=output_dir,
+                    run_datetime=now,
+                    run_number=run_number,
+                )
+                csv_files.extend(files_created)
+
+                for f in files_created:
+                    file_name = Path(f).name
+
+                    # Suy ra data_type + sys_id từ tên file
+                    stem = Path(f).stem  # vd: tc_track_2025204-20251121_005650-run1
+                    type_part = stem.split("-")[0]   # vd: tc_track_2025204
+                    data_type = type_part or None
+                    sys_id = None
+                    if type_part.startswith(("tc_track_", "tc_forecast_")):
+                        parts = type_part.split("_")
+                        if len(parts) >= 3:
+                            sys_id = parts[-1]
+
+                    # Đếm số bản ghi trong file (không tính header)
+                    record_count = 0
+                    try:
+                        with open(f, "r", encoding="utf-8") as fh:
+                            record_count = max(sum(1 for _ in fh) - 1, 0)
+                    except Exception:
+                        # Nếu đếm lỗi, để 0 và không chặn việc ghi log
+                        record_count = 0
+
+                    # Tạo event SUCCESS cho từng file (1 file = 1 event)
+                    log.create_event(
+                        run=run_entry,
+                        step="EXTRACT",
+                        status="SUCCESS",
+                        url=url,
+                        file_name=file_name,
+                        data_type=data_type,
+                        sys_id=sys_id,
+                        record_count=record_count,
+                        error_code=None,
+                        error_message=None,
+                        started_at=start_time,
+                        finished_at=datetime.now(),
+                        created_at=datetime.now(),
+                    )
+                    print(f"EVENT FILE: {file_name} -> SUCCESS")
+
+            except Exception as e:
+                # Nếu URL lỗi hoàn toàn (không tạo được file nào), ghi 1 event FAIL
+                log.create_event(
+                    run=run_entry,
+                    step="EXTRACT",
+                    status="FAIL",
+                    url=url,
+                    file_name=None,
+                    data_type=None,
+                    sys_id=None,
+                    record_count=0,
+                    error_code="EXTRACT_ERROR",
+                    error_message=str(e),
+                    started_at=start_time,
+                    finished_at=datetime.now(),
+                    created_at=datetime.now(),
+                )
+                print(f"EVENT URL FAILED: {url} -> {e}")
+                continue
+
+        # Cập nhật run log tổng kết
+        success_count = sum(1 for e in run_entry.events if e.status == "SUCCESS")
+        fail_count = sum(1 for e in run_entry.events if e.status == "FAIL")
+
+        log.update_run(
+            run_entry,
+            status="SUCCESS",
+            finished_at=datetime.now(),
+            success_count=success_count,
+            fail_count=fail_count,
+        )
+
+        print("\n" + "=" * 60)
+        print("HOÀN THÀNH EXTRACT + LOGGING!")
+        print(f" Đã tạo {len(csv_files)} file CSV.")
+        print("=" * 60)
+
+    except Exception as e:
+        print(f"\n Lỗi trong quá trình xử lý: {e}")
+        # Chỉ update run nếu đã tạo được run_entry
+        if run_entry is not None:
+            log.update_run(
+                run_entry,
+                status="FAIL",
+                finished_at=datetime.now(),
+            )
+        raise
+    finally:
+        session.close()

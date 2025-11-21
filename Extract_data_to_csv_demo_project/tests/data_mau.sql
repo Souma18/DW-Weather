@@ -37,6 +37,8 @@
 --   - created_at   : thời điểm tạo bản ghi log (thường = started_at)
 --   - updated_at   : thời điểm cập nhật cuối (khi job kết thúc)
 -- ============================================================
+USE db_etl_metadata;
+
 
 CREATE TABLE log_extract_run (
     id            BIGINT       PRIMARY KEY,
@@ -230,5 +232,11 @@ INSERT INTO log_extract_event (
     TIMESTAMP '2025-11-21 00:56:58',
     TIMESTAMP '2025-11-21 00:56:58'
 );
+ALTER TABLE log_extract_run MODIFY id VARCHAR(36) NOT NULL  ;
+ALTER TABLE log_extract_event MODIFY id VARCHAR(36) NOT NULL  ;
+ALTER TABLE log_extract_event MODIFY run_id VARCHAR(36) NOT NULL;
+DESCRIBE log_extract_event;
 
+select * from log_extract_run;
+select * from log_extract_event;
 
