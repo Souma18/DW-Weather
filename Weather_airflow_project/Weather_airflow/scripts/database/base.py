@@ -2,7 +2,7 @@ from contextlib import contextmanager
 import time
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from MySQLdb import OperationalError
+from sqlalchemy.exc import OperationalError
 
 def create_engine_with_retry(url, logger, max_retry=3, wait_seconds=10, echo=False):
     times = 1

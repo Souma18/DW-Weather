@@ -18,7 +18,7 @@ DEFAULT_TRANSFORM_DB_URL = os.getenv(
     "TRANSFORM_DB_URL", "mysql+mysqldb://root:1@localhost:3306/db_stage_transform"
 )
 DEFAULT_RECIEVER_EMAIL = os.getenv(
-    "RECIEVER_EMAIL", "22130080@st.hcmuaf.edu.vn"
+    "RECIEVER_EMAIL", "minhhien7840@gmail.com"
 )
 
 engine_elt, SessionELT = setup_database(DEFAULT_ELT_DB_URL, 

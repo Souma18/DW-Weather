@@ -1,25 +1,30 @@
-import os
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
-# Lấy API KEY từ biến môi trường
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+# Cấu hình email gửi
+SENDER_EMAIL = "22130080@st.hcmuaf.edu.vn"   # email của bạn
+SENDER_PASSWORD = "password"
 
-
-def send_email(to_email: str, subject: str, content: str):
-    message = Mail(
-        from_email="youremail@domain.com",    # Email của bạn
-        to_emails=to_email,
-        subject=subject,
-        html_content=content                   # Có thể là plain text hoặc HTML
-    )
-
+def send_email(to_email: str, subject: str, content: str, html: bool = True):
     try:
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        response = sg.send(message)
+        # Tạo message
+        msg = MIMEMultipart("alternative")
+        msg["From"] = SENDER_EMAIL
+        msg["To"] = to_email
+        msg["Subject"] = subject
 
-        # Success
-        return response.status_code in [200, 202]
+        if html:
+            msg.attach(MIMEText(content, "html"))
+        else:
+            msg.attach(MIMEText(content, "plain"))
+
+        # Kết nối SMTP server và gửi email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
+
+        return True
 
     except Exception as e:
         print("Error sending email:", e)
