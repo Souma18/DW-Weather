@@ -1,6 +1,7 @@
 from sqlalchemy import inspect
-from database import SessionELT, session_scope
-from log import CleanLog, TransformLog
+from database.setup_db import SessionELT
+from database import session_scope
+from elt_metadata.models import CleanLog, TransformLog
 from datetime import datetime
 
 def row_to_dict(row):

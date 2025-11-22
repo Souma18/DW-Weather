@@ -1,17 +1,3 @@
-"""
-ORM models cho schema transform (Dim + Fact tables).
-
-Các bảng định nghĩa theo sơ đồ được cung cấp trong attachments:
-- DimLocation
-- DimCyclone
-- FactHeavyRain
-- FactThunderstorm
-- FactFog
-- FactGale
-- FactCycloneTrack
-
-Mỗi model có comment tiếng Việt nhỏ để dễ hiểu và có các relationship cơ bản.
-"""
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Numeric, Text
 from sqlalchemy.orm import relationship
 
