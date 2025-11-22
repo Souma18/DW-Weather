@@ -1,6 +1,6 @@
 from sqlalchemy import inspect
 from database.setup_db import SessionELT
-from database import session_scope
+from database.base import session_scope
 from elt_metadata.models import CleanLog, TransformLog
 from datetime import datetime
 

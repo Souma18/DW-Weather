@@ -1,8 +1,8 @@
 from datetime import datetime
-from base import create_engine_and_session, create_tables
-from database import BaseELT, BaseClean, BaseTransform
+from database.base import create_engine_and_session, create_tables
+from . import BaseELT, BaseClean, BaseTransform
 import os
-from logger import log_email_status, log_dual_status
+from database.logger import log_email_status, log_dual_status
 from elt_metadata.models import TransformLog, CleanLog
 def setup_database(url, logger, echo=False):
     engine, SessionLocal = create_engine_and_session(url, logger, echo=echo)

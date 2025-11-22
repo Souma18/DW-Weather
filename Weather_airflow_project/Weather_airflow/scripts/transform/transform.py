@@ -1,10 +1,10 @@
 from datetime import datetime
 from database.setup_db import SessionClean, SessionTransform, SessionELT, DEFAULT_RECIEVER_EMAIL
-from database import session_scope
+from database.base import session_scope
 from database.logger import log_dual_status
-from check_log import success_logs
+from transform.check_log import success_logs
 from elt_metadata.models import TransformLog
-from models import (
+from transform.models import (
     DimLocation, DimCyclone,
     FactHeavyRain, FactThunderstorm, FactFog, FactGale, FactCycloneTrack
 )
@@ -195,6 +195,3 @@ def run_transform():
 
     with session_scope(SessionELT) as session_log:
         logger.save_logs(session_log)
-
-if __name__ == "__main__":
-    run_transform()
