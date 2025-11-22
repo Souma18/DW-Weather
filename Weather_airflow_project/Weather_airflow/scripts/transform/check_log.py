@@ -1,22 +1,24 @@
+from sqlalchemy import inspect
 from database import SessionELT, session_scope
 from log import CleanLog, TransformLog
 from datetime import datetime
 
+def row_to_dict(row):
+    return {c.key: getattr(row, c.key) for c in inspect(row).mapper.column_attrs}
 today_start = datetime.combine(datetime.today(), datetime.min.time())
-today_end = datetime.combine(datetime.today(), datetime.max.time())
 success_logs = []
 with session_scope(SessionELT) as session:
     success_logs = session.query(CleanLog).filter(
-        CleanLog.status == "Success",
-        CleanLog.process_time >= today_start,
-        CleanLog.process_time <= today_end
+        CleanLog.status.in_(["SUCCESS"])
     ).all()
+    success_logs = [row_to_dict(r) for r in success_logs]  # convert ORM → dict
+
     if not success_logs:
         transform_log = TransformLog(
             status="Failure",
             record_count=0,
             message="Hôm nay job clean chưa có dữ liệu mới.",
-            start_at=datetime.combine(datetime.today(), datetime.min.time()),
+            start_at=today_start,
             end_at=datetime.now()
         )
         session.add(transform_log)

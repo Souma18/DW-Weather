@@ -25,12 +25,11 @@ class DimLocation(BaseTransform):
     __tablename__ = "dim_location"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="Khóa chính")
-    station = Column(String(255), nullable=True, comment="Tên trạm hoặc địa điểm đo")
+    station = Column(String(200), nullable=True, comment="Tên trạm hoặc địa điểm đo")
     lat = Column(Numeric(10, 6), nullable=True, comment="Vĩ độ")
     lon = Column(Numeric(10, 6), nullable=True, comment="Kinh độ")
     hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
     country = Column(String(100), nullable=True, comment="Quốc gia")
-    gc = Column(String(100), nullable=True, comment="Mã địa lý hoặc khu vực")
     createdAt = Column(DateTime, nullable=True)
 
     # Relationship tới các bảng fact tham chiếu location
