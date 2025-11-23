@@ -1,4 +1,7 @@
 pytest
 setuptools
 wheel
+requests>=2.28.0
+mysql-connector-python>=8.0.0
+SQLAlchemy>=2.0.0
 # TODO: update the necessary requirements to develop this package

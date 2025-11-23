@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
 import requests
+from requests import exceptions as requests_exc
 from urllib.parse import urlparse
 import re
 from db import SessionLocal
@@ -16,6 +17,13 @@ from log_service import LogService
 from sqlalchemy import func
 from models import LogExtractRun
 
+
+# Xác định thư mục gốc project và thư mục data dùng chung
+# - Mặc định: <project_root>/data
+# - Có thể override bằng biến môi trường DATA_DIR (phù hợp khi chạy Docker, mount volume)
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = Path(os.getenv("DATA_DIR", str(DEFAULT_DATA_DIR)))
 
 
 # Mapping các loại dữ liệu sang tên viết tắt (tùy chọn)
@@ -31,6 +39,44 @@ TYPE_ABBREVIATIONS = {
     "gale": "gale",
     "fog": "fog",
 }
+
+
+def build_error_info(exc: Exception) -> tuple[str, str]:
+    """
+    Sinh ra (error_code, error_message) chuẩn hóa từ một exception.
+
+    Ưu tiên:
+    - Nếu là HTTPError và có status code  => HTTP_{status}
+    - Nếu là các lỗi requests cụ thể     => REQUEST_TIMEOUT / CONNECTION_ERROR / TOO_MANY_REDIRECTS / REQUEST_ERROR
+    - Nếu là lỗi IO                      => IO_ERROR
+    - Nếu khác                           => EXTRACT_ERROR
+
+    error_message sẽ luôn có dạng: '{ExceptionName}: {str(exc)}'
+    """
+    error_name = exc.__class__.__name__
+
+    # 1) HTTP status code nếu có
+    status_code = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(exc, requests_exc.HTTPError) and status_code:
+        error_code = f"HTTP_{status_code}"
+    # 2) Nhóm lỗi requests
+    elif isinstance(exc, (requests_exc.Timeout, requests_exc.ConnectTimeout)):
+        error_code = "REQUEST_TIMEOUT"
+    elif isinstance(exc, requests_exc.ConnectionError):
+        error_code = "CONNECTION_ERROR"
+    elif isinstance(exc, requests_exc.TooManyRedirects):
+        error_code = "TOO_MANY_REDIRECTS"
+    elif isinstance(exc, requests_exc.RequestException):
+        error_code = "REQUEST_ERROR"
+    # 3) Lỗi IO (ghi/đọc file CSV, network ở tầng OS)
+    elif isinstance(exc, OSError):
+        error_code = "IO_ERROR"
+    # 4) Mặc định
+    else:
+        error_code = "EXTRACT_ERROR"
+
+    error_message = f"{error_name}: {exc}"
+    return error_code, error_message
 
 
 def sanitize_filename(name: str, use_abbreviations: bool = False) -> str:
@@ -160,14 +206,15 @@ def load_links_from_file(file_path: str = None) -> List[str]:
     Load danh sách links từ file text.
     
     Args:
-        file_path: Đường dẫn đến file chứa links. Nếu None, sẽ tìm trong data/load_link/
+        file_path: Đường dẫn đến file chứa links.
+                   Nếu None, sẽ tìm trong thư mục DATA_DIR/load_link/
     
     Returns:
         List các links (URLs)
     """
     if file_path is None:
-        # Tìm file đầu tiên trong thư mục load_link
-        load_link_dir = Path(__file__).parent / "data" / "load_link"
+        # Tìm file đầu tiên trong thư mục load_link (dưới DATA_DIR)
+        load_link_dir = DATA_DIR / "load_link"
         load_link_dir.mkdir(parents=True, exist_ok=True)
         
         # Tìm tất cả file .txt trong thư mục
@@ -220,8 +267,8 @@ def extract_jsons_to_csv(
     
     Cấu trúc thư mục + tên file:
     
-    - Thư mục theo ngày: raw/YYYYMMDD/
-        Ví dụ: data/raw/20251118/
+    - Thư mục theo ngày: raw/YYYYMMDD/ (dưới DATA_DIR)
+        Ví dụ: <DATA_DIR>/raw/20251118/
     
     - Mỗi CSV file sẽ có tên: {sanitized_type}-{YYYYMMDD_HHMMSS}-runN.csv
     Trong đó:
@@ -233,7 +280,7 @@ def extract_jsons_to_csv(
     
     Args:
         links: Danh sách URLs chứa JSON data
-        output_dir: Thư mục lưu file CSV. Nếu None, sẽ lưu vào data/raw/
+        output_dir: Thư mục lưu file CSV. Nếu None, sẽ lưu vào DATA_DIR/raw/
         run_datetime: Thời điểm chạy batch (dùng chung cho tất cả file trong một lần chạy).
                       Nếu None, sẽ dùng thời điểm hiện tại.
         run_number: Số lần chạy trong ngày (run1, run2, ...).
@@ -244,7 +291,7 @@ def extract_jsons_to_csv(
     """
     # Thư mục gốc lưu dữ liệu raw
     if output_dir is None:
-        base_output_dir = Path(__file__).parent / "data" / "raw"
+        base_output_dir = DATA_DIR / "raw"
     else:
         base_output_dir = Path(output_dir)
     
@@ -515,7 +562,8 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                     print(f"EVENT FILE: {file_name} -> SUCCESS")
 
             except Exception as e:
-                # Nếu URL lỗi hoàn toàn (không tạo được file nào), ghi 1 event FAIL
+                # Nếu URL lỗi hoàn toàn (không tạo được file nào), ghi 1 event FAIL với mã lỗi và tên lỗi chi tiết
+                error_code, error_message = build_error_info(e)
                 log.create_event(
                     run=run_entry,
                     step="EXTRACT",
@@ -525,13 +573,13 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                     data_type=None,
                     sys_id=None,
                     record_count=0,
-                    error_code="EXTRACT_ERROR",
-                    error_message=str(e),
+                    error_code=error_code,
+                    error_message=error_message,
                     started_at=start_time,
                     finished_at=datetime.now(),
                     created_at=datetime.now(),
                 )
-                print(f"EVENT URL FAILED: {url} -> {e}")
+                print(f"EVENT URL FAILED: {url} -> {error_code} | {error_message}")
                 continue
 
         # Cập nhật run log tổng kết
