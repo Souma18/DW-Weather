@@ -34,6 +34,7 @@ def send_email(to_email: str, subject: str, content: str, html: bool = True):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, recipients, msg.as_string())
+            
         log.info(f"Gửi email thành công → {', '.join(recipients)}")
         return True
     except Exception as e:
