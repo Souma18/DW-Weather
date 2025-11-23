@@ -12,7 +12,7 @@ from google.cloud.exceptions import NotFound
 from google.oauth2 import service_account
 
 # THÊM IMPORT GỬI EMAIL
-from send_error_email import send_error_email
+from Weather_airflow_project.Weather_airflow.scripts.load.email_server import send_error_email
 
 # Cấu hình Logging
 logging.basicConfig(
