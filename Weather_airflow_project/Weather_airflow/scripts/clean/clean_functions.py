@@ -41,7 +41,8 @@ def parse_lat_lon(value: Any) -> Optional[float]:
         return None
 
 def parse_hp(value: Any) -> Optional[float]:
-    return to_float_nullable(value)
+    result = to_float_nullable(value)
+    return result if result is not None else result.mean()
 
 def parse_country(value: Any) -> str:
     if _is_invalid_string(value):
@@ -144,7 +145,7 @@ def clean_gale_row(row: Dict[str, Any]) -> Optional[Gale]:
         hp=parse_hp(row.get("hp")),
         country=parse_country(row.get("country")),
         knots=to_int_nullable(row.get("knots")) or 0,
-        ms=to_int_nullable(row.get("ms")) or 0,
+        ms=row.get("m/s"),
         degrees=to_int_nullable(row.get("degrees")) or 0,
         direction=row.get("direction"),
         datetime=parse_datetime(row.get("datetime")),
@@ -164,7 +165,6 @@ def clean_heavyrain_row(row: Dict[str, Any]) -> Optional[HeavyRain]:
         hp=parse_hp(row.get("hp")),
         country=parse_country(row.get("country")),
         hvyrain=rain,
-        datetime=parse_datetime(row.get("datetime")),
     )
 
 def clean_thunderstorms_row(row: Dict[str, Any]) -> Optional[Thunderstorms]:
@@ -185,33 +185,7 @@ def clean_thunderstorms_row(row: Dict[str, Any]) -> Optional[Thunderstorms]:
 
 def _parse_intensity_category_from_text(text: Any) -> Optional[int]:
     return extract_first_int(text)
-
-def clean_tc_forecast_row(row: Dict[str, Any]) -> Optional[TCForecast]:
-    try:
-        lat = float(row.get("lat"))
-        lng = float(row.get("lng"))
-    except Exception:
-        return None
-    if not validate_coords(lat, lng):
-        return None
-    intensity_cat = _parse_intensity_category_from_text(row.get("intensity"))
-    wind_threshold_kt, NEQ, SEQ, SWQ, NWQ = parse_wind_radii(row.get("wind_radii"))
-    fc_time = parse_datetime(row.get("forecast_time"), fmt=None)
-    return TCForecast(
-        time_interval=to_int_nullable(row.get("time_interval")) or 0,
-        lat=lat,
-        lng=lng,
-        pressure=parse_hp(row.get("pressure")),
-        max_wind_speed=parse_hp(row.get("max_wind_speed")),
-        gust=parse_hp(row.get("gust")),
-        intensity_category=intensity_cat,
-        wind_threshold_kt=wind_threshold_kt,
-        NEQ_nm=NEQ,
-        SEQ_nm=SEQ,
-        SWQ_nm=SWQ,
-        NWQ_nm=NWQ,
-        forecast_time=fc_time,
-    )
+    return extract_first_int(text)
 
 def clean_tc_track_row(row: Dict[str, Any]) -> Optional[TCTrack]:
     analysis_time = parse_datetime(row.get("analysis_time"), fmt=None)
@@ -228,7 +202,6 @@ def clean_tc_track_row(row: Dict[str, Any]) -> Optional[TCTrack]:
     intensity_cat = _parse_intensity_category_from_text(row.get("intensity"))
     wind_threshold_kt, NEQ, SEQ, SWQ, NWQ = parse_wind_radii(row.get("wind_radii"))
 
-    # 🔥 FIX HERE — xử lý NaN cho tc_name
     tc_name_raw = row.get("tc_name")
     tc_name = None if _is_invalid_string(tc_name_raw) else str(tc_name_raw).strip()
 
@@ -256,18 +229,14 @@ def clean_tc_track_row(row: Dict[str, Any]) -> Optional[TCTrack]:
 def clean_tc_row(row: Dict[str, Any]) -> TC:
     start_time = parse_datetime(row.get("start"), fmt=None)
     latest_time = parse_datetime(row.get("latest"), fmt=None)
-    intensity_cat = _parse_intensity_category_from_text(row.get("intensity"))
     return TC(
-        sysid=to_int_nullable(row.get("sysid")) or 0,
+        sysid=row.get("sysid")if not _is_invalid_string(row.get("sysid")) else None,
         name=str(row.get("name")).strip() if not _is_invalid_string(row.get("name")) else None,
         storm_id=str(row.get("id")).strip() if not _is_invalid_string(row.get("id")) else None,
-        intensity=row.get("intensity"),
-        intensity_category=intensity_cat,
-        start=start_time,
+        intensity=row.get("intensity")if not _is_invalid_string(row.get("intensity")) else None,
+        start=start_time ,
         latest=latest_time,
-        same=row.get("same") if not _is_invalid_string(row.get("same")) else None,
-        centerid=to_int_nullable(row.get("centerid")) or 0,
-        gts=row.get("gts") if not _is_invalid_string(row.get("gts")) else None,
+        centerid=row.get("centerid")if not _is_invalid_string(row.get("centerid")) else None,
     )
 
 # ============================
@@ -279,7 +248,6 @@ CLEAN_FUNCTIONS = {
     "gale": clean_gale_row,
     "heavyrain_snow": clean_heavyrain_row,
     "thunderstorms": clean_thunderstorms_row,
-    "tc_forecast": clean_tc_forecast_row,
     "tc_track": clean_tc_track_row,
     "tc": clean_tc_row,
 }
