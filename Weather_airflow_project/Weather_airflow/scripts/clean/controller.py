@@ -7,7 +7,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-from clean_functions import CLEAN_FUNCTIONS
+from clean.clean_functions import CLEAN_FUNCTIONS
 
 # -----------------------
 # Configuration

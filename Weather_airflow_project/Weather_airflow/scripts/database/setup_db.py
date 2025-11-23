@@ -9,13 +9,13 @@ def setup_database(url, logger, echo=False):
     return engine, SessionLocal
 
 DEFAULT_ELT_DB_URL = os.getenv(
-    "ELT_DB_URL", "mysql+mysqldb://root:1@localhost:3306/db_etl_metadata"
+    "ELT_DB_URL", "mysql+pymysql://root:1@localhost:3306/db_etl_metadata"
 )
 DEFAULT_CLEAN_DB_URL = os.getenv(
-    "CLEAN_DB_URL", "mysql+mysqldb://root:1@localhost:3306/db_stage_clean"
+    "CLEAN_DB_URL", "mysql+pymysql://root:1@localhost:3306/db_stage_clean"
 )
 DEFAULT_TRANSFORM_DB_URL = os.getenv(
-    "TRANSFORM_DB_URL", "mysql+mysqldb://root:1@localhost:3306/db_stage_transform"
+    "TRANSFORM_DB_URL", "mysql+pymysql://root:1@localhost:3306/db_stage_transform"
 )
 DEFAULT_RECIEVER_EMAIL = os.getenv(
     "RECIEVER_EMAIL", "minhhien7840@gmail.com"
