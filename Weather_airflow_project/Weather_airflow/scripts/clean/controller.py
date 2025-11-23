@@ -5,10 +5,9 @@ import pandas as pd
 
 from database.setup_db import engine_clean, SessionClean, engine_elt, SessionELT
 from database.logger import log_dual_status
-from clean_functions import CLEAN_FUNCTIONS
+from clean.clean_functions import CLEAN_FUNCTIONS
 
-from elt_metadata.models import LogExtractEvent
-from clean.models import CleanLog
+from elt_metadata.models import LogExtractEvent,CleanLog
 
 RAW_DIR = os.getenv("RAW_DIR", r"venv\\data\\raw")
 
@@ -188,7 +187,4 @@ def process_etl():
                     "ETL Failed",
                     f"Lỗi khi insert file {filename}: {e}"
                 )
-                print(f"❌ Lỗi insert: {e}")
-
-if __name__ == "__main__":
-    process_etl()
+                print(f"❌ Lỗi insert: {e}")    
