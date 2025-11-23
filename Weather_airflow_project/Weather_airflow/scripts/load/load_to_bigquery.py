@@ -1,312 +1,289 @@
-import os
 import logging
-from datetime import datetime
-from typing import List, Dict, Any
+import datetime
+import os
+from typing import Dict, Optional
+from decimal import Decimal
 
+import pymysql
+from pymysql.cursors import DictCursor
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
 from google.oauth2 import service_account
 
-from database.setup_db import SessionELT, DEFAULT_RECIEVER_EMAIL
-from database.base import session_scope
-from database.logger import log_dual_status
-from elt_metadata.models import LoadLog
 
-# --------------------------------------------------------------------------- #
-#                               CẤU HÌNH LOGGING                              #
-# --------------------------------------------------------------------------- #
+# Cấu hình Logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(message)s",
-    datefmt="%H:%M:%S",
+    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    datefmt='%H:%M:%S'
 )
 log = logging.getLogger(__name__)
 
 
-# --------------------------------------------------------------------------- #
-#                          LOAD WEATHER → BIGQUERY CLASS                      #
-# --------------------------------------------------------------------------- #
 class WeatherLoadToBigQuery:
     PROJECT_ID = "datawarehouse-478311"
     DATASET_ID = "dataset_weather"
+    STAGING_DB = "db_stage_transform"
+    META_DB = "db_etl_metadata"
 
-    # Schema chính xác 100% – dùng để validate trước khi load
+    # SCHEMA CHÍNH XÁC 100% – PHẢI KHỚP HOÀN TOÀN VỚI CẤU TRÚC BẢNG THỰC TẾ
     EXACT_SCHEMA = {
-        "dim_location": {"id", "station", "lat", "lon", "hp", "country", "gc", "createdAt"},
-        "dim_cyclone": {"id", "name", "intensity", "start_time", "latest_time", "updatedAt"},
-        "fact_heavy_rain": {"location_id", "event_datetime", "rainfall_mm", "createdAt"},
-        "fact_thunderstorm": {"location_id", "event_datetime", "thunderstorm_index", "createdAt"},
-        "fact_fog": {"location_id", "event_datetime", "fog_index", "visibility", "createdAt"},
-        "fact_gale": {"location_id", "event_datetime", "knots", "ms", "degrees", "direction", "createdAt"},
-        "fact_cyclone_track": {
-            "cyclone_id", "event_datetime", "lat", "lon", "intensity", "pressure",
-            "max_wind_speed", "gust", "speed_of_movement", "movement_direction",
-            "wind_radis", "center_id", "createdAt",
+        # Dim
+        'dim_location': {
+            'id', 'station', 'lat', 'lon', 'hp', 'country', 'gc', 'createdAt'
+        },
+        'dim_cyclone': {
+            'id', 'name', 'intensity', 'start_time', 'latest_time', 'updatedAt'
+        },
+        # Fact
+        'fact_heavy_rain': {
+            'location_id', 'event_datetime', 'rainfall_mm', 'createdAt'
+        },
+        'fact_thunderstorm': {
+            'location_id', 'event_datetime', 'thunderstorm_index', 'createdAt'
+        },
+        'fact_fog': {
+            'location_id', 'event_datetime', 'fog_index', 'visibility', 'createdAt'
+        },
+        'fact_gale': {
+            'location_id', 'event_datetime', 'knots', 'ms', 'degrees', 'direction', 'createdAt'
+        },
+        'fact_cyclone_track': {
+            'cyclone_id', 'event_datetime', 'lat', 'lon', 'intensity', 'pressure',
+            'max_wind_speed', 'gust', 'speed_of_movement', 'movement_direction',
+            'wind_radis', 'center_id', 'createdAt'
         },
     }
 
     def __init__(self):
-        # 1. Kết nối BigQuery
         current_dir = os.path.dirname(os.path.abspath(__file__))
         key_path = os.path.join(current_dir, "bigquery-key.json")
-
         if not os.path.exists(key_path):
-            raise FileNotFoundError(f"Không tìm thấy file key: {key_path}")
+            raise FileNotFoundError(f"Không tìm thấy bigquery-key.json tại: {key_path}")
 
-        log.info("Khởi tạo client BigQuery...")
+        log.info("Đang kết nối BigQuery...")
         creds = service_account.Credentials.from_service_account_file(key_path)
         self.bq = bigquery.Client(credentials=creds, project=self.PROJECT_ID)
 
-        # 2. Đảm bảo dataset tồn tại
         dataset_ref = f"{self.PROJECT_ID}.{self.DATASET_ID}"
         try:
             self.bq.get_dataset(dataset_ref)
-            log.info(f"Dataset '{self.DATASET_ID}' đã sẵn sàng.")
+            log.info(f"Dataset '{self.DATASET_ID}' đã tồn tại.")
         except NotFound:
             dataset = bigquery.Dataset(dataset_ref)
             dataset.location = "asia-southeast1"
             self.bq.create_dataset(dataset)
-            log.info(f"Đã tạo dataset mới: {self.DATASET_ID}")
+            log.info(f"Tự động tạo dataset '{self.DATASET_ID}' thành công!")
 
-    # ------------------------------------------------------------------- #
-    #                     LẤY MAPPING TỪ DB (giống cũ)                    #
-    # ------------------------------------------------------------------- #
-    def get_active_mappings(self) -> List[Dict[str, Any]]:
-        with session_scope(SessionELT) as session:
-            # Giả sử bạn có model MappingInfo trong elt_metadata.models
-            # Nếu chưa có thì tạo nhanh: table mapping_info với các cột như dưới
-            from elt_metadata.models import MappingInfo
-            return (
-                session.query(MappingInfo)
-                .filter(MappingInfo.is_active == True)
-                .order_by(MappingInfo.load_order)
-                .all()
-            )
+        self.mysql_cfg = {
+            "host": "localhost",
+            "port": 3306,
+            "user": "etl_user",
+            "password": "etl_password",
+        }
 
-    # ------------------------------------------------------------------- #
-    #                     TRANSFORM DỮ LIỆU CHO BIGQUERY                  #
-    # ------------------------------------------------------------------- #
-    @staticmethod
-    def transform_row_for_bq(row: Dict[str, Any]) -> Dict[str, Any]:
-        transformed = {}
-        for k, v in row.items():
-            if isinstance(v, datetime):
-                if v.tzinfo is None:
-                    v = v.replace(tzinfo=datetime.timezone.utc)
-                transformed[k] = v.isoformat(timespec="seconds")
-            elif isinstance(v, (int, float, str, bool)) or v is None:
-                transformed[k] = v
-            else:
-                transformed[k] = str(v)  # fallback
-        return transformed
+    def mysql_conn(self, db_name: str):
+        cfg = self.mysql_cfg.copy()
+        cfg["database"] = db_name
+        cfg["cursorclass"] = DictCursor
+        cfg["autocommit"] = True
+        return pymysql.connect(**cfg)
 
-    # ------------------------------------------------------------------- #
-    #                          LOAD MỘT BẢNG                               #
-    # ------------------------------------------------------------------- #
-    def load_table(self, mapping) -> bool:
-        src_table = mapping.source_table
-        dst_table = mapping.target_table
-        ts_column = mapping.timestamp_column
-        load_type = mapping.load_type.lower()  # "full" hoặc "incremental"
+    def get_mappings(self):
+        with self.mysql_conn(self.META_DB) as conn, conn.cursor() as cur:
+            cur.execute("SELECT * FROM mapping_info WHERE is_active = 1 ORDER BY load_order")
+            return cur.fetchall()
 
-        log.info(f"→ Bắt đầu load: {src_table} → {dst_table} [{load_type}]")
+    def get_last_load_ts(self, table_name: str):
+        with self.mysql_conn(self.META_DB) as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT MAX(end_at) AS last_end 
+                FROM load_log 
+                WHERE table_name = %s AND status = 'SUCCESS'
+            """, (table_name,))
+            row = cur.fetchone()
+            ts = row.get("last_end") if row else None
+            if ts and ts.tzinfo is None:
+                return ts.replace(tzinfo=datetime.timezone.utc)
+            return ts
 
-        start_at = datetime.now(datetime.timezone.utc)
+    def fetch_data(self, table: str, ts_col: Optional[str], since: Optional[datetime.datetime]):
+        sql = f"SELECT * FROM `{self.STAGING_DB}`.`{table}`"
+        params = []
+        if ts_col and since:
+            sql += f" WHERE `{ts_col}` > %s ORDER BY `{ts_col}`"
+            params = [since.strftime("%Y-%m-%d %H:%M:%S")]
+        with self.mysql_conn(self.STAGING_DB) as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall()
 
-        try:
-            # 1. Lấy dữ liệu từ bảng Transform (MySQL)
-            with session_scope(SessionELT) as session:
-                model_cls = self.get_model_by_table_name(src_table)
-                query = session.query(model_cls)
+    def transform_rows(self, rows: list) -> list:
+        result = []
+        for row in rows:
+            new_row = {}
+            for k, v in row.items():
+                if isinstance(v, datetime.datetime):
+                    if v.tzinfo is None:
+                        v = v.replace(tzinfo=datetime.timezone.utc)
+                    new_row[k] = v.isoformat(timespec="seconds")
+                elif isinstance(v, Decimal):
+                    new_row[k] = float(v)
+                else:
+                    new_row[k] = v
+            result.append(new_row)
+        return result
 
-                if load_type == "incremental" and ts_column:
-                    last_ts = self.get_last_successful_load_ts(dst_table)
-                    if last_ts:
-                        query = query.filter(getattr(model_cls, ts_column) > last_ts)
-
-                rows = query.all()
-
-            if not rows:
-                self._log_success(src_table, dst_table, 0, start_at, "Không có dữ liệu mới")
-                return True
-
-            # 2. Kiểm tra schema chính xác
-            actual_cols = set(rows[0].__dict__.keys()) - {"_sa_instance_state"}
-            schema_error = self._validate_schema(src_table, actual_cols)
-            if schema_error:
-                raise ValueError(schema_error)
-
-            # 3. Transform + Load lên BigQuery
-            json_rows = [self.transform_row_for_bq(r.__dict__) for r in rows]
-
-            table_id = f"{self.PROJECT_ID}.{self.DATASET_ID}.{dst_table}"
-            job_config = bigquery.LoadJobConfig(
-                source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-                write_disposition=(
-                    bigquery.WriteDisposition.WRITE_TRUNCATE
-                    if load_type == "full"
-                    else bigquery.WriteDisposition.WRITE_APPEND
-                ),
-                autodetect=False,  # tự động detect nhưng vẫn an toàn vì schema đã validate
-                create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
-            )
-
-            job = self.bq.load_table_from_json(json_rows, table_id, job_config=job_config)
-            job.result()  # chờ hoàn thành
-
-            record_count = len(json_rows)
-            log.info(f"✓ Load thành công {record_count:,} bản ghi → {dst_table}")
-            self._log_success(src_table, dst_table, record_count, start_at)
-
+    def load_to_bq(self, rows: list, target_table: str, load_type: str) -> bool:
+        if not rows:
             return True
 
+        table_id = f"{self.PROJECT_ID}.{self.DATASET_ID}.{target_table}"
+        disposition = bigquery.WriteDisposition.WRITE_TRUNCATE if load_type == "full" else bigquery.WriteDisposition.WRITE_APPEND
+
+        config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            write_disposition=disposition,
+            autodetect=True,
+            create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
+        )
+        if load_type == "incremental":
+            config.schema_update_options = [bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION]
+
+        try:
+            job = self.bq.load_table_from_json(rows, table_id, job_config=config)
+            job.result()
+            log.info(f"ĐÃ LOAD {len(rows):,} dòng → {target_table} ({load_type})")
+            return True
         except Exception as e:
-            end_at = datetime.now(datetime.timezone.utc)
-            error_msg = f"Load thất bại bảng {dst_table}: {str(e)}"
-            log.error(error_msg)
-            self._log_failure(src_table, dst_table, start_at, end_at, error_msg)
+            log.error(f"LỖI LOAD {target_table}: {e}")
             return False
 
-    # ------------------------------------------------------------------- #
-    #                           HELPER METHODS                             #
-    # ------------------------------------------------------------------- #
-    def get_model_by_table_name(self, table_name: str):
-        """Map tên bảng → SQLAlchemy model trong transform.models"""
-        from transform.models import (
-            DimLocation, DimCyclone,
-            FactHeavyRain, FactThunderstorm, FactFog, FactGale, FactCycloneTrack,
-        )
-        mapping = {
-            "dim_location": DimLocation,
-            "dim_cyclone": DimCyclone,
-            "fact_heavy_rain": FactHeavyRain,
-            "fact_thunderstorm": FactThunderstorm,
-            "fact_fog": FactFog,
-            "fact_gale": FactGale,
-            "fact_cyclone_track": FactCycloneTrack,
-        }
-        model = mapping.get(table_name.lower())
-        if not model:
-            raise ValueError(f"Không tìm thấy model cho bảng: {table_name}")
-        return model
+    def check_exact_schema(self, table: str, actual_columns: set) -> Optional[str]:
+        expected = self.EXACT_SCHEMA.get(table.lower())  # không phân biệt hoa thường
 
-    def get_last_successful_load_ts(self, target_table: str) -> datetime | None:
-        with session_scope(SessionELT) as session:
-            last = (
-                session.query(LoadLog.end_at)
-                .filter(LoadLog.table_name == target_table, LoadLog.status == "SUCCESS")
-                .order_by(LoadLog.end_at.desc())
-                .first()
-            )
-            return last[0] if last else None
-
-    def _validate_schema(self, table_name: str, actual: set) -> str | None:
-        expected = self.EXACT_SCHEMA.get(table_name.lower())
         if not expected:
-            return f"Bảng '{table_name}' không được định nghĩa trong EXACT_SCHEMA"
-        if actual != expected:
-            missing = expected - actual
-            extra = actual - expected
-            parts = []
+            defined_tables = ', '.join(sorted(self.EXACT_SCHEMA.keys()))
+            return (f"LỖI CẤU HÌNH: Bảng nguồn '{table}' không tồn tại hoặc sai chính tả trong EXACT_SCHEMA. "
+                    f"Chỉ chấp nhận: {defined_tables}")
+
+        if actual_columns != expected:
+            missing = expected - actual_columns
+            extra = actual_columns - expected
+            errors = []
             if missing:
-                parts.append(f"thiếu: {', '.join(sorted(missing))}")
+                errors.append(f"thiếu cột: {', '.join(sorted(missing))}")
             if extra:
-                parts.append(f"thừa: {', '.join(sorted(extra))}")
-            return f"Schema không khớp [{table_name}]: {'; '.join(parts)}"
+                errors.append(f"dư cột: {', '.join(sorted(extra))}")
+            return f"Schema không khớp bảng '{table}': {', '.join(errors)}"
         return None
 
-    def _log_success(self, src, dst, count, start_at, msg=None):
-        end_at = datetime.now(datetime.timezone.utc)
-        log_obj = LoadLog(
-            status="SUCCESS",
-            record_count=count,
-            source_name=src,
-            table_name=dst,
-            message=msg or f"Load thành công {count:,} bản ghi",
-            start_at=start_at,
-            end_at=end_at,
-        )
-        with session_scope(SessionELT) as session:
-            log_dual_status(
-                log_obj,
-                session,
-                to_email=DEFAULT_RECIEVER_EMAIL,
-                subject=f"[LOAD SUCCESS] {dst}",
-                content=f"Đã load thành công {count:,} bản ghi từ {src} → BigQuery.{dst}",
-            )
+    def log_run(self, source_table: str, target_table: str, status: str, record_count: int,
+                start_at: datetime.datetime, end_at: datetime.datetime, message: str = None):
+        if not message:
+            if record_count == 0 and status == "SUCCESS":
+                message = "Bảng rỗng hoặc không có dữ liệu mới → bỏ qua"
+            elif status == "SUCCESS":
+                message = f"Load thành công {record_count:,} bản ghi"
+            else:
+                message = "Load thất bại"
 
-    def _log_failure(self, src, dst, start_at, end_at, error_detail):
-        log_obj = LoadLog(
-            status="FAILURE",
-            record_count=0,
-            source_name=src,
-            table_name=dst,
-            message=error_detail,
-            start_at=start_at,
-            end_at=end_at,
-        )
-        with session_scope(SessionELT) as session:
-            log_dual_status(
-                log_obj,
-                session,
-                to_email=DEFAULT_RECIEVER_EMAIL,
-                subject=f"[LOAD FAILED] {dst}",
-                content=f"Load thất bại!\nBảng: {dst}\nLỗi: {error_detail}",
-            )
+        try:
+            with self.mysql_conn(self.META_DB) as conn, conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO load_log
+                    (status, record_count, source_name, table_name, message, start_at, end_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    status, record_count, source_table, target_table,
+                    message, start_at, end_at
+                ))
+            log.info(f"LOG [{status}]: {message}")
+        except Exception as e:
+            log.warning(f"Không ghi log được: {e}")
 
-    # ------------------------------------------------------------------- #
-    #                               RUN MAIN                               #
-    # ------------------------------------------------------------------- #
+    def process_table(self, mapping: Dict) -> bool:
+        src = mapping["source_table"]           # tên bảng trong MySQL (ví dụ: fact_heavy_rain)
+        dst = mapping["target_table"]           # tên bảng trong BigQuery (có thể giống hoặc khác)
+        ts_col = mapping.get("timestamp_column")
+        load_type = mapping["load_type"]
+
+        log.info(f"Đang xử lý: {src} → {dst} [{load_type}] (ts_col={ts_col or 'FULL'})")
+        start_time = datetime.datetime.now(datetime.timezone.utc)
+
+        # 1. Lấy cột thực tế từ bảng nguồn
+        try:
+            with self.mysql_conn(self.STAGING_DB) as conn, conn.cursor() as cur:
+                cur.execute(f"SELECT * FROM `{src}` LIMIT 1")
+                first_row = cur.fetchone()
+
+                if not first_row:
+                    log.info(f"Bảng {src} rỗng → bỏ qua")
+                    self.log_run(src, dst, "SUCCESS", 0, start_time,
+                                 datetime.datetime.now(datetime.timezone.utc))
+                    return True
+
+                actual_columns = set(first_row.keys())
+
+        except Exception as e:
+            end_time = datetime.datetime.now(datetime.timezone.utc)
+            error_msg = str(e)
+            if "doesn't exist" in error_msg.lower():
+                error_msg = f"Bảng nguồn '{src}' không tồn tại trong {self.STAGING_DB}"
+            log.error(f"LỖI TRUY VẤN: {error_msg}")
+            self.log_run(src, dst, "FAILED", 0, start_time, end_time, error_msg)
+            return False
+
+        # 2. Kiểm tra schema chính xác tuyệt đối
+        schema_error = self.check_exact_schema(src, actual_columns)
+        if schema_error:
+            end_time = datetime.datetime.now(datetime.timezone.utc)
+            log.error(f"SCHEMA ERROR: {schema_error}")
+            self.log_run(src, dst, "FAILED", 0, start_time, end_time, schema_error)
+            return False
+
+        # 3. Lấy dữ liệu (incremental hoặc full)
+        since = self.get_last_load_ts(src) if load_type == "incremental" and ts_col else None
+        raw_data = self.fetch_data(src, ts_col, since)
+
+        if not raw_data:
+            end_time = datetime.datetime.now(datetime.timezone.utc)
+            log.info(f"Không có dữ liệu mới cho {src}")
+            self.log_run(src, dst, "SUCCESS", 0, start_time, end_time)
+            return True
+
+        # 4. Transform + Load
+        data = self.transform_rows(raw_data)
+        success = self.load_to_bq(data, dst, load_type)
+
+        end_time = datetime.datetime.now(datetime.timezone.utc)
+        if success:
+            self.log_run(src, dst, "SUCCESS", len(data), start_time, end_time)
+        else:
+            self.log_run(src, dst, "FAILED", 0, start_time, end_time, "Load lên BigQuery thất bại")
+
+        return success
+
     def run(self):
         log.info("=== BẮT ĐẦU LOAD WEATHER → BIGQUERY ===")
-        mappings = self.get_active_mappings()
-
+        mappings = self.get_mappings()
         if not mappings:
-            error = "Không có mapping nào active trong bảng mapping_info!"
-            log.error(error)
-            log_dual_status(
-                LoadLog(status="FAILURE", message=error, table_name="ALL", record_count=0),
-                SessionELT(),
-                to_email=DEFAULT_RECIEVER_EMAIL,
-                subject="[LOAD CRITICAL] Không có mapping active",
-                content=error,
-            )
+            log.error("KHÔNG TÌM THẤY MAPPING! Hãy kiểm tra bảng mapping_info trong db_etl_metadata")
             return
 
-        success = 0
-        failed_tables = []
-
+        success_count = 0
         for m in mappings:
-            if self.load_table(m):
-                success += 1
-            else:
-                failed_tables.append(m.target_table)
+            if self.process_table(m):
+                success_count += 1
 
-        # Báo cáo cuối cùng
-        total = len(mappings)
-        log.info(f"HOÀN TẤT: {success}/{total} bảng thành công")
+        log.info(f"HOÀN TẤT: {success_count}/{len(mappings)} bảng thành công")
 
-        summary = f"""
-WEATHER → BIGQUERY LOAD HOÀN TẤT
-Tổng bảng: {total}
-Thành công: {success}
-Thất bại: {len(failed_tables)}
-{"Bảng lỗi: " + ", ".join(failed_tables) if failed_tables else ""}
-        """.strip()
-
-        print("\n" + "=" * 70)
-        print(summary.replace("\n", "\n   "))
-        print("=" * 70)
-
-        # Gửi email tổng hợp
-        subject = "[LOAD SUCCESS] Toàn bộ thành công" if not failed_tables else "[LOAD ERROR] Có bảng thất bại"
-        log_dual_status(
-            LoadLog(status="SUCCESS" if not failed_tables else "FAILURE", message=summary, table_name="SUMMARY"),
-            SessionELT(),
-            to_email=DEFAULT_RECIEVER_EMAIL,
-            subject=subject,
-            content=summary,
-        )
+        print("\n" + "="*70)
+        print("           WEATHER → BIGQUERY LOAD HOÀN TẤT")
+        print("="*70)
+        print(f"   Tổng số bảng     : {len(mappings)}")
+        print(f"   Thành công       : {success_count}")
+        print(f"   Thất bại         : {len(mappings) - success_count}")
+        print("="*70)
 
 
 if __name__ == "__main__":
