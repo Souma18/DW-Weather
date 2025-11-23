@@ -14,7 +14,7 @@ from clean.clean_functions import CLEAN_FUNCTIONS
 # -----------------------
 DB_META_URL = os.getenv("DB_META_URL", "mysql+pymysql://root:1@localhost:3306/db_etl_metadata")
 DB_TARGET_URL = os.getenv("DB_TARGET_URL", "mysql+pymysql://root:1@localhost:3306/db_stage_clean")
-RAW_DIR = os.getenv("RAW_DIR", r"venv\\data\\raw")
+RAW_DIR = os.getenv("RAW_DIR", r"venv\\data\\raw") #Thay đổi cho phù hợp 
 
 # Engines
 meta_engine: Engine = create_engine(DB_META_URL)
@@ -44,25 +44,6 @@ def df_infer_sql_type(series: pd.Series) -> str:
         except Exception:
             pass
     return "TEXT"
-
-def create_clean_log_table():
-    sql = """
-    CREATE TABLE IF NOT EXISTS clean_log (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        file_name VARCHAR(255) NOT NULL,
-        process_time DATETIME NOT NULL,
-        status VARCHAR(20) NOT NULL,
-        total_rows INT NULL,
-        inserted_rows INT NULL,
-        error_msg TEXT NULL,
-        start_index INT NULL,
-        end_index INT NULL,
-        fail_range VARCHAR(50) NULL,
-        table_type VARCHAR(50) NULL
-    );
-    """
-    with meta_engine.begin() as conn:
-        conn.execute(text(sql))
 
 def get_pending_files() -> pd.DataFrame:
     query = """
@@ -191,7 +172,6 @@ def clean_df_by_type(data_type: str, raw_df: pd.DataFrame) -> pd.DataFrame:
 # Main ETL process
 # -----------------------
 def process_etl():
-    create_clean_log_table()
     pending = get_pending_files()
 
     if pending.empty:

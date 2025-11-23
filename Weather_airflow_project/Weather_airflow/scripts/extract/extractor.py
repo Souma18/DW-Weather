@@ -12,10 +12,10 @@ import requests
 from requests import exceptions as requests_exc
 from urllib.parse import urlparse
 import re
-from db import SessionLocal
-from log_service import LogService
+from database.base import session_scope
+from extract.log_service import LogService
 from sqlalchemy import func
-from models import LogExtractRun
+from elt_metadata.models import LogExtractRun
 
 
 # Xác định thư mục gốc project và thư mục data dùng chung
@@ -464,9 +464,8 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
     print("=" * 60)
     print("BẮT ĐẦU EXTRACT DỮ LIỆU TỪ JSON SANG CSV (VỚI LOGGING)")
     print("=" * 60)
-
-    session = SessionLocal()
-    log = LogService(session)
+    with session_scope() as session:
+        log = LogService(session)
     run_entry = None  # tránh UnboundLocalError trong khối except
 
     try:

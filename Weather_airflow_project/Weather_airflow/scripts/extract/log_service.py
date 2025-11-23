@@ -1,6 +1,6 @@
 # log_service.py
 from datetime import datetime
-from models import LogExtractRun, LogExtractEvent
+from elt_metadata.models import LogExtractRun, LogExtractEvent
 
 class LogService:
     """
@@ -25,8 +25,6 @@ class LogService:
             created_at=created_at
         )
         self.session.add(run)
-        self.session.commit()
-        self.session.refresh(run)
         return run
 
     def update_run(self, run: LogExtractRun, **kwargs) -> None:
@@ -37,7 +35,6 @@ class LogService:
             if hasattr(run, key):
                 setattr(run, key, value)
         run.updated_at = datetime.now()
-        self.session.commit()
 
     # -------------------- EVENT --------------------
     def create_event(self, run: LogExtractRun, step: str, status: str,
@@ -70,15 +67,4 @@ class LogService:
             created_at=created_at
         )
         self.session.add(event)
-        self.session.commit()
-        self.session.refresh(event)
         return event
-
-    def update_event(self, event: LogExtractEvent, **kwargs) -> None:
-        """
-        Cập nhật thông tin log event
-        """
-        for key, value in kwargs.items():
-            if hasattr(event, key):
-                setattr(event, key, value)
-        self.session.commit()
