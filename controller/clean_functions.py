@@ -1,6 +1,5 @@
 import re
 from typing import Any, Dict, Optional, Tuple
-
 import pandas as pd
 
 # ============================
@@ -9,12 +8,10 @@ import pandas as pd
 
 _INVALID_STRINGS = {"", "nan", "none", "null", "n/a", "-", "--", "no data"}
 
-
 def _is_invalid_string(value: Any) -> bool:
     if pd.isna(value):
         return True
     return str(value).strip().lower() in _INVALID_STRINGS
-
 
 def to_float_nullable(value: Any) -> Optional[float]:
     if _is_invalid_string(value):
@@ -24,48 +21,33 @@ def to_float_nullable(value: Any) -> Optional[float]:
     except Exception:
         return None
 
-
 def to_int_nullable(value: Any) -> Optional[int]:
     if _is_invalid_string(value):
         return None
     try:
-        return int(value)
+        return int(float(value))
     except Exception:
         return None
 
-
 def parse_lat_lon(value: Any) -> Optional[float]:
-    """
-    Parse latitude/longitude encoded as integer*100 or numeric string.
-    Returns float (value/100) if within plausible bounds (-180..180), else None.
-    """
     if _is_invalid_string(value):
         return None
     try:
         num = float(value)
-        v = num / 100.0
+        v = num / 100.0 if abs(num) > 180 and abs(num / 100.0) <= 180 else num
         return v if -180.0 <= v <= 180.0 else None
     except Exception:
         return None
 
-
 def parse_hp(value: Any) -> Optional[float]:
-    """Parse numeric pressure / wind speed fields into float or None."""
     return to_float_nullable(value)
 
-
 def parse_country(value: Any) -> str:
-    """Normalize country; unknown-like values → 'Unknown'."""
     if _is_invalid_string(value):
         return "Unknown"
     return str(value).strip()
 
-
 def parse_datetime(value: Any, fmt: Optional[str] = "%Y%m%d%H") -> Optional[pd.Timestamp]:
-    """
-    Parse datetime with optional strict format. If fmt is None, let pandas infer.
-    Returns pd.Timestamp or None on failure.
-    """
     if _is_invalid_string(value):
         return None
     try:
@@ -75,63 +57,49 @@ def parse_datetime(value: Any, fmt: Optional[str] = "%Y%m%d%H") -> Optional[pd.T
     except Exception:
         return None
 
-
 def extract_first_int(s: Any) -> Optional[int]:
-    """Extract the first integer found in a string, or None."""
     if _is_invalid_string(s):
         return None
     m = re.search(r"(\d+)", str(s))
     return int(m.group(1)) if m else None
 
-
 def parse_visibility(raw_vis: Any, default: int = 100) -> int:
-    """
-    Parse visibility string like '10 km' or digits inside text.
-    If missing/invalid → default (100 per original behavior).
-    """
     if _is_invalid_string(raw_vis):
         return default
     s = str(raw_vis)
     m = re.search(r"(\d+)", s)
     return int(m.group(1)) if m else default
 
-
 def parse_wind_radii(value: Any) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """
-    Parse a wind_radii string of the form:
-      '34.0 kt;;60nm|NEQ;;60nm|SEQ;;60nm|SWQ;;60nm|NWQ'
-    Returns: (threshold_kt, NEQ_nm, SEQ_nm, SWQ_nm, NWQ_nm)
-    Missing parts become None.
-    """
     if _is_invalid_string(value):
         return (None, None, None, None, None)
-
     text = str(value)
     parts = text.split(";;")
-    # threshold
     try:
         threshold_part = parts[0].replace("kt", "").strip()
         threshold = float(threshold_part) if threshold_part != "" else None
     except Exception:
         threshold = None
-
     quadrants = {"NEQ": None, "SEQ": None, "SWQ": None, "NWQ": None}
     for part in parts[1:]:
-        # items may be like '60nm|NEQ' or '60nm|NEQ|...' - we handle the common "dist|QUAD" form
         if "|" in part:
-            dist, quad = part.split("|", 1)
-            quad = quad.strip()
+            p1, p2 = [p.strip() for p in part.split("|", 1)]
+            if p2.upper() in quadrants:
+                dist, quad = p1, p2.upper()
+            elif p1.upper() in quadrants:
+                quad, dist = p1.upper(), p2
+            else:
+                m = re.search(r"(\d+)", part)
+                dist = m.group(1) + "nm" if m else ""
+                quad = next((q for q in quadrants if q in part.upper()), None)
             try:
-                quadrants[quad] = float(dist.replace("nm", "").strip())
+                quadrants[quad] = float(dist.replace("nm", "").strip()) if quad else None
             except Exception:
-                quadrants[quad] = None
-
+                pass
     return (threshold, quadrants["NEQ"], quadrants["SEQ"], quadrants["SWQ"], quadrants["NWQ"])
-
 
 def validate_coords(lat: float, lng: float) -> bool:
     return -90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0
-
 
 # ============================
 #  Cleaners
@@ -149,7 +117,6 @@ def clean_fog_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "visibility": visibility_value,
         "datetime": parse_datetime(row.get("datetime")),
     }
-
 
 def clean_gale_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     lat = parse_lat_lon(row.get("lat"))
@@ -169,7 +136,6 @@ def clean_gale_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "datetime": parse_datetime(row.get("datetime")),
     }
 
-
 def clean_heavyrain_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     lat = parse_lat_lon(row.get("lat"))
     lon = parse_lat_lon(row.get("lon"))
@@ -187,7 +153,6 @@ def clean_heavyrain_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "datetime": parse_datetime(row.get("datetime")),
     }
 
-
 def clean_thunderstorms_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     lat = parse_lat_lon(row.get("lat"))
     lon = parse_lat_lon(row.get("lon"))
@@ -204,13 +169,10 @@ def clean_thunderstorms_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "datetime": parse_datetime(row.get("datetime")),
     }
 
-
 def _parse_intensity_category_from_text(text: Any) -> Optional[int]:
     return extract_first_int(text)
 
-
 def clean_tc_forecast_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    # parse lat/lng as floats (these rows use decimal degrees)
     try:
         lat = float(row.get("lat"))
         lng = float(row.get("lng"))
@@ -218,11 +180,9 @@ def clean_tc_forecast_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     if not validate_coords(lat, lng):
         return None
-
     intensity_cat = _parse_intensity_category_from_text(row.get("intensity"))
     wind_threshold_kt, NEQ, SEQ, SWQ, NWQ = parse_wind_radii(row.get("wind_radii"))
-    fc_time = parse_datetime(row.get("forecast_time"), fmt=None)  # allow flexible parsing
-
+    fc_time = parse_datetime(row.get("forecast_time"), fmt=None)
     return {
         "time_interval": to_int_nullable(row.get("time_interval")) or 0,
         "lat": lat,
@@ -239,7 +199,6 @@ def clean_tc_forecast_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "forecast_time": fc_time,
     }
 
-
 def clean_tc_track_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     analysis_time = parse_datetime(row.get("analysis_time"), fmt=None)
     try:
@@ -249,10 +208,8 @@ def clean_tc_track_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     if not validate_coords(lat, lng):
         return None
-
     intensity_cat = _parse_intensity_category_from_text(row.get("intensity"))
     wind_threshold_kt, NEQ, SEQ, SWQ, NWQ = parse_wind_radii(row.get("wind_radii"))
-
     return {
         "analysis_time": analysis_time,
         "tc_name": row.get("tc_name"),
@@ -273,7 +230,6 @@ def clean_tc_track_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "center_id": to_int_nullable(row.get("center_id")) or 0,
     }
 
-
 def clean_tc_row(row: Dict[str, Any]) -> Dict[str, Any]:
     start_time = parse_datetime(row.get("start"), fmt=None)
     latest_time = parse_datetime(row.get("latest"), fmt=None)
@@ -281,7 +237,7 @@ def clean_tc_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "sysid": to_int_nullable(row.get("sysid")) or 0,
         "name": str(row.get("name")).strip() if not _is_invalid_string(row.get("name")) else None,
-        "id": str(row.get("id")).strip() if not _is_invalid_string(row.get("id")) else None,
+        "storm_id": str(row.get("id")).strip() if not _is_invalid_string(row.get("id")) else None,
         "intensity": row.get("intensity"),
         "intensity_category": intensity_cat,
         "start": start_time,
@@ -290,7 +246,6 @@ def clean_tc_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "centerid": to_int_nullable(row.get("centerid")) or 0,
         "gts": row.get("gts") if not _is_invalid_string(row.get("gts")) else None,
     }
-
 
 # ============================
 #  Mapping
@@ -301,7 +256,7 @@ CLEAN_FUNCTIONS = {
     "gale": clean_gale_row,
     "heavyrain": clean_heavyrain_row,
     "thunderstorms": clean_thunderstorms_row,
-    "tc_forecast_2025204": clean_tc_forecast_row,
-    "tc_track_2025204": clean_tc_track_row,
+    "tc_forecast": clean_tc_forecast_row,
+    "tc_track": clean_tc_track_row,
     "tc": clean_tc_row,
 }
