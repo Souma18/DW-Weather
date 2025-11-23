@@ -1,6 +1,6 @@
 import pandas as pd
 
-file_path = r"venv\\data\\raw\\thunderstorms_20251118222608_3.csv"
+file_path = r"venv\\data\\raw\\tc-20251121_005650-run1.csv"
 
 df = pd.read_csv(file_path)
 
