@@ -11,4 +11,5 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+Weather_airflow_project/Weather_airflow/scripts/load/bigquery-key.json
 

@@ -1,0 +1,21 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_etl_staging
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "1"
+      MYSQL_USER: etl_user
+      MYSQL_PASSWORD: etl_password
+      # MYSQL_ALLOW_EMPTY_PASSWORD: "yes" # Dòng này không cần thiết nếu đã đặt MYSQL_ROOT_PASSWORD
+    ports:
+      - "3306:3306"
+    volumes:
+      # SỬ DỤNG LẠI Named Volume nếu bạn muốn, hoặc Bind Mount (./mysql_data)
+      - mysql_persistent_data:/var/lib/mysql 
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password # ĐÃ SỬA: Bỏ phần không hợp lệ đi
+
+# Volume có tên rõ ràng, sau này muốn xóa sạch thì mới prune thủ công
+volumes:
+  mysql_persistent_data:
