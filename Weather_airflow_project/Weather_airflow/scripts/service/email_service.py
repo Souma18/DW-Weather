@@ -1,11 +1,11 @@
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import os
 
 # Cấu hình email gửi
 SENDER_EMAIL = "22130080@st.hcmuaf.edu.vn"   # email của bạn
-SENDER_PASSWORD = "password"
-
+SENDER_PASSWORD = os.getenv("EMAIL_PASSWORD")  # lấy mật khẩu từ biến môi trường
 def send_email(to_email: str, subject: str, content: str, html: bool = True):
     try:
         # Tạo message

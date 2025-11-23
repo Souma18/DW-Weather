@@ -1,6 +1,7 @@
 from sqlalchemy import inspect
 from database.setup_db import SessionELT
 from database.base import session_scope
+from database.logger import log_dual_status
 from elt_metadata.models import CleanLog, TransformLog
 from datetime import datetime
 
@@ -22,4 +23,6 @@ with session_scope(SessionELT) as session:
             start_at=today_start,
             end_at=datetime.now()
         )
-        session.add(transform_log)
+        log_dual_status(transform_log, SessionELT,
+                        to_email="minhhien7840@gmail.com", subject="Lỗi hệ thống DW-Weather",
+                        content="Hôm nay job clean chưa có dữ liệu mới.")

@@ -14,7 +14,4 @@ def log_dual_status(log_obj, SessionLocal, to_email: str, subject: str, content:
         content += f"\n\nXảy ra lỗi: {e}"
 
     # 2. Send Email
-    try:
-        log_email_status(to_email, subject, content)
-    except Exception as e:
-        print(f"Failed to send email: {e}")
+    log_email_status(to_email, subject, content)
