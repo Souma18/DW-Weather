@@ -25,6 +25,7 @@ class LogService:
             created_at=created_at
         )
         self.session.add(run)
+        self.session.flush() 
         return run
 
     def update_run(self, run: LogExtractRun, **kwargs) -> None:
@@ -67,4 +68,5 @@ class LogService:
             created_at=created_at
         )
         self.session.add(event)
+        self.session.flush()
         return event

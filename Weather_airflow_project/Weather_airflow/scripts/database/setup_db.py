@@ -1,22 +1,18 @@
 from datetime import datetime
 from database.base import create_engine_and_session, create_tables
 from . import BaseELT, BaseClean, BaseTransform
+from utils.file_utils import extract_values_from_json
 import os
 from database.logger import log_email_status, log_dual_status
 from elt_metadata.models import TransformLog, CleanLog
 def setup_database(url, logger, echo=False):
     engine, SessionLocal = create_engine_and_session(url, logger, echo=echo)
     return engine, SessionLocal
+db_url = extract_values_from_json(r'data\config\config.json', 'db_url')
+DEFAULT_ELT_DB_URL =  db_url['elt_db_url']
+DEFAULT_CLEAN_DB_URL = db_url['clean_db_url']
+DEFAULT_TRANSFORM_DB_URL = db_url['transform_db_url']
 
-DEFAULT_ELT_DB_URL = os.getenv(
-    "ELT_DB_URL", "mysql+mysqlconnector://root:1@localhost:3306/db_etl_metadata"
-)
-DEFAULT_CLEAN_DB_URL = os.getenv(
-    "CLEAN_DB_URL", "mysql+mysqlconnector://root:1@localhost:3306/db_stage_clean"
-)
-DEFAULT_TRANSFORM_DB_URL = os.getenv(
-    "TRANSFORM_DB_URL", "mysql+mysqlconnector://root:1@localhost:3306/db_stage_transform"
-)
 DEFAULT_RECIEVER_EMAIL = os.getenv(
     "RECIEVER_EMAIL", "minhhien7840@gmail.com"
 )

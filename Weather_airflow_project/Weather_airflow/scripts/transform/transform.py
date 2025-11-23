@@ -8,7 +8,7 @@ from transform.models import (
     DimLocation, DimCyclone,
     FactHeavyRain, FactThunderstorm, FactFog, FactGale, FactCycloneTrack
 )
-from clean.models import FogRecord
+from clean.models import *
 
 class TransformLogger:
     def __init__(self):
@@ -160,11 +160,12 @@ def transform_cyclone_track(clean_obj, session, logger, source_name=None):
     logger.update("fact_cyclone_track", source_name, track.createdAt)
 
 TRANSFORM_HANDLERS = {
-    # "FactHeavyRain": (CleanHeavyRain, transform_heavy_rain),
-    # "FactThunderstorm": (CleanThunderstorm, transform_thunderstorm),
-    "fog_records": (FogRecord, transform_fog),
-    # "FactGale": (CleanGale, transform_gale),
-    # "FactCycloneTrack": (CleanCycloneTrack, transform_cyclone_track),
+    "heavyrain": (HeavyRain, transform_heavy_rain),
+    "thunderstorms": (Thunderstorms, transform_thunderstorm),
+    "fog": (Fog, transform_fog),
+    "gale": (Gale, transform_gale),
+    "tc_track": (TCTrack, transform_cyclone_track),
+    # Thiếu forcast
 }
 
 def run_transform():

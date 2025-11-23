@@ -30,7 +30,19 @@ class CleanLog(BaseELT):
     end_index = Column(Integer, nullable=True)
     fail_range = Column(String(50), nullable=True)
     table_type = Column(String(50), nullable=True)
+    
+class LoadLog(BaseELT):
+    __tablename__ = "load_log"
 
+    id           = Column(Integer, primary_key=True, autoincrement=True, comment="Khóa chính log")
+    status       = Column(String(20), nullable=False, comment="Trạng thái bước load")
+    record_count = Column(Integer, nullable=True, comment="Số bản ghi đã load")
+    source_name  = Column(String(255), nullable=True, comment="Tên bảng nguồn trong staging")
+    table_name   = Column(Text, nullable=True, comment="Tên bảng đích trong BigQuery")
+    message      = Column(Text, nullable=True, comment="Chi tiết log, cảnh báo hoặc lỗi")
+    start_at     = Column(DateTime, nullable=True, comment="Thời gian bắt đầu load")
+    end_at       = Column(DateTime, nullable=True, comment="Thời gian kết thúc load")
+    
 class LogExtractRun(BaseELT):
     __tablename__ = "log_extract_run"
 
@@ -53,7 +65,7 @@ class LogExtractEvent(BaseELT):
     __tablename__ = "log_extract_event"
 
     id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    run_id = Column(VARCHAR, ForeignKey("log_extract_run.id"), nullable=False)
+    run_id = Column(VARCHAR(36), ForeignKey("log_extract_run.id"), nullable=False)
     step = Column(String(50), nullable=False)
     status = Column(String(20), nullable=False)
     url = Column(Text)

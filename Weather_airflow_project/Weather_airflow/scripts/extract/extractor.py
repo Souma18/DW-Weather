@@ -13,6 +13,7 @@ from requests import exceptions as requests_exc
 from urllib.parse import urlparse
 import re
 from database.base import session_scope
+from database.setup_db import SessionELT
 from extract.log_service import LogService
 from sqlalchemy import func
 from elt_metadata.models import LogExtractRun
@@ -464,149 +465,134 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
     print("=" * 60)
     print("BẮT ĐẦU EXTRACT DỮ LIỆU TỪ JSON SANG CSV (VỚI LOGGING)")
     print("=" * 60)
-    with session_scope() as session:
+    with session_scope(SessionELT) as session:
         log = LogService(session)
-    run_entry = None  # tránh UnboundLocalError trong khối except
+        run_entry = None  # tránh UnboundLocalError trong khối except
 
-    try:
-        # Bước 1: Load danh sách links
-        print("\n[Bước 1] Đang load danh sách links...")
-        links = load_links_from_file(links_file_path)
-        if not links:
-            print("⚠️  Không có links để xử lý!")
-            return
+        try:
+            # Bước 1: Load danh sách links
+            links = load_links_from_file(links_file_path)
+            if not links:
+                return
 
-        # Xác định thời điểm và run_number cho lần chạy hiện tại
-        now = datetime.now()
-        today = now.date()
-        job_name = "extract_json_to_csv"
+            # Xác định thời điểm và run_number cho lần chạy hiện tại
+            now = datetime.now()
+            today = now.date()
+            job_name = "extract_json_to_csv"
 
-        # Lấy run_number từ DB log: MAX(run_number) trong ngày hiện tại + 1
-        max_run = (
-            session.query(func.max(LogExtractRun.run_number))
-            .filter(
-                LogExtractRun.run_date == today,
-                LogExtractRun.job_name == job_name,
-            )
-            .scalar()
-        )
-        run_number = (max_run or 0) + 1
-
-        # Tạo entry run log (khớp với LogService.create_run)
-        run_entry = log.create_run(
-            job_name=job_name,
-            run_number=run_number,
-            started_at=now,
-            status="RUNNING",
-            created_at=now,
-        )
-        print(f"RUN ID: {run_entry.id}")
-
-        # Bước 2: Extract JSON -> CSV kèm log events (1 file = 1 event)
-        csv_files: list[str] = []
-
-        for idx, url in enumerate(links, 1):
-            print(f"\n[{idx}/{len(links)}] Đang xử lý: {url}")
-
-            start_time = datetime.now()
-
-            try:
-                # Extract 1 URL sang CSV (có thể sinh 0/1/n file)
-                files_created = extract_jsons_to_csv(
-                    [url],
-                    output_dir=output_dir,
-                    run_datetime=now,
-                    run_number=run_number,
+            # Lấy run_number từ DB log: MAX(run_number) trong ngày hiện tại + 1
+            max_run = (
+                session.query(func.max(LogExtractRun.run_number))
+                .filter(
+                    LogExtractRun.run_date == today,
+                    LogExtractRun.job_name == job_name,
                 )
-                csv_files.extend(files_created)
+                .scalar()
+            )
+            run_number = (max_run or 0) + 1
 
-                for f in files_created:
-                    file_name = Path(f).name
+            # Tạo entry run log (khớp với LogService.create_run)
+            run_entry = log.create_run(
+                job_name=job_name,
+                run_number=run_number,
+                started_at=now,
+                status="RUNNING",
+                created_at=now,
+            )
 
-                    # Suy ra data_type + sys_id từ tên file
-                    stem = Path(f).stem  # vd: tc_track_2025204-20251121_005650-run1
-                    type_part = stem.split("-")[0]   # vd: tc_track_2025204
-                    data_type = type_part or None
-                    sys_id = None
-                    if type_part.startswith(("tc_track_", "tc_forecast_")):
-                        parts = type_part.split("_")
-                        if len(parts) >= 3:
-                            sys_id = parts[-1]
+            # Bước 2: Extract JSON -> CSV kèm log events (1 file = 1 event)
+            csv_files: list[str] = []
 
-                    # Đếm số bản ghi trong file (không tính header)
-                    record_count = 0
-                    try:
-                        with open(f, "r", encoding="utf-8") as fh:
-                            record_count = max(sum(1 for _ in fh) - 1, 0)
-                    except Exception:
-                        # Nếu đếm lỗi, để 0 và không chặn việc ghi log
+            for idx, url in enumerate(links, 1):
+                
+                start_time = datetime.now()
+
+                try:
+                    # Extract 1 URL sang CSV (có thể sinh 0/1/n file)
+                    files_created = extract_jsons_to_csv(
+                        [url],
+                        output_dir=output_dir,
+                        run_datetime=now,
+                        run_number=run_number,
+                    )
+                    csv_files.extend(files_created)
+
+                    for f in files_created:
+                        file_name = Path(f).name
+
+                        # Suy ra data_type + sys_id từ tên file
+                        stem = Path(f).stem  # vd: tc_track_2025204-20251121_005650-run1
+                        type_part = stem.split("-")[0]   # vd: tc_track_2025204
+                        data_type = type_part or None
+                        sys_id = None
+                        if type_part.startswith(("tc_track_", "tc_forecast_")):
+                            parts = type_part.split("_")
+                            if len(parts) >= 3:
+                                sys_id = parts[-1]
+
+                        # Đếm số bản ghi trong file (không tính header)
                         record_count = 0
+                        try:
+                            with open(f, "r", encoding="utf-8") as fh:
+                                record_count = max(sum(1 for _ in fh) - 1, 0)
+                        except Exception:
+                            # Nếu đếm lỗi, để 0 và không chặn việc ghi log
+                            record_count = 0
 
-                    # Tạo event SUCCESS cho từng file (1 file = 1 event)
+                        # Tạo event SUCCESS cho từng file (1 file = 1 event)
+                        log.create_event(
+                            run=run_entry,
+                            step="EXTRACT",
+                            status="SUCCESS",
+                            url=url,
+                            file_name=file_name,
+                            data_type=data_type,
+                            sys_id=sys_id,
+                            record_count=record_count,
+                            error_code=None,
+                            error_message=None,
+                            started_at=start_time,
+                            finished_at=datetime.now(),
+                            created_at=datetime.now(),
+                        )
+                except Exception as e:
+                    # Nếu URL lỗi hoàn toàn (không tạo được file nào), ghi 1 event FAIL với mã lỗi và tên lỗi chi tiết
+                    error_code, error_message = build_error_info(e)
                     log.create_event(
                         run=run_entry,
                         step="EXTRACT",
-                        status="SUCCESS",
+                        status="FAIL",
                         url=url,
-                        file_name=file_name,
-                        data_type=data_type,
-                        sys_id=sys_id,
-                        record_count=record_count,
-                        error_code=None,
-                        error_message=None,
+                        file_name=None,
+                        data_type=None,
+                        sys_id=None,
+                        record_count=0,
+                        error_code=error_code,
+                        error_message=error_message,
                         started_at=start_time,
                         finished_at=datetime.now(),
                         created_at=datetime.now(),
                     )
-                    print(f"EVENT FILE: {file_name} -> SUCCESS")
+                    continue
 
-            except Exception as e:
-                # Nếu URL lỗi hoàn toàn (không tạo được file nào), ghi 1 event FAIL với mã lỗi và tên lỗi chi tiết
-                error_code, error_message = build_error_info(e)
-                log.create_event(
-                    run=run_entry,
-                    step="EXTRACT",
-                    status="FAIL",
-                    url=url,
-                    file_name=None,
-                    data_type=None,
-                    sys_id=None,
-                    record_count=0,
-                    error_code=error_code,
-                    error_message=error_message,
-                    started_at=start_time,
-                    finished_at=datetime.now(),
-                    created_at=datetime.now(),
-                )
-                print(f"EVENT URL FAILED: {url} -> {error_code} | {error_message}")
-                continue
+            # Cập nhật run log tổng kết
+            success_count = sum(1 for e in run_entry.events if e.status == "SUCCESS")
+            fail_count = sum(1 for e in run_entry.events if e.status == "FAIL")
 
-        # Cập nhật run log tổng kết
-        success_count = sum(1 for e in run_entry.events if e.status == "SUCCESS")
-        fail_count = sum(1 for e in run_entry.events if e.status == "FAIL")
-
-        log.update_run(
-            run_entry,
-            status="SUCCESS",
-            finished_at=datetime.now(),
-            success_count=success_count,
-            fail_count=fail_count,
-        )
-
-        print("\n" + "=" * 60)
-        print("HOÀN THÀNH EXTRACT + LOGGING!")
-        print(f" Đã tạo {len(csv_files)} file CSV.")
-        print("=" * 60)
-
-    except Exception as e:
-        print(f"\n Lỗi trong quá trình xử lý: {e}")
-        # Chỉ update run nếu đã tạo được run_entry
-        if run_entry is not None:
             log.update_run(
                 run_entry,
-                status="FAIL",
+                status="SUCCESS",
                 finished_at=datetime.now(),
+                success_count=success_count,
+                fail_count=fail_count,
             )
-        raise
-    finally:
-        session.close()
+
+        except Exception as e:
+            # Chỉ update run nếu đã tạo được run_entry
+            if run_entry is not None:
+                log.update_run(
+                    run_entry,
+                    status="FAIL",
+                    finished_at=datetime.now(),
+                )
+            raise
