@@ -1,7 +1,8 @@
+# load_to_bigquery.py
 import logging
 import datetime
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from decimal import Decimal
 
 import pymysql
@@ -9,6 +10,9 @@ from pymysql.cursors import DictCursor
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
 from google.oauth2 import service_account
+
+# THÊM IMPORT GỬI EMAIL
+from send_error_email import send_error_email
 
 # Cấu hình Logging
 logging.basicConfig(
@@ -27,26 +31,12 @@ class WeatherLoadToBigQuery:
 
     # SCHEMA CHÍNH XÁC 100% – PHẢI KHỚP HOÀN TOÀN VỚI CẤU TRÚC BẢNG THỰC TẾ
     EXACT_SCHEMA = {
-        # Dim
-        'dim_location': {
-            'id', 'station', 'lat', 'lon', 'hp', 'country', 'gc', 'createdAt'
-        },
-        'dim_cyclone': {
-            'id', 'name', 'intensity', 'start_time', 'latest_time', 'updatedAt'
-        },
-        # Fact
-        'fact_heavy_rain': {
-            'location_id', 'event_datetime', 'rainfall_mm', 'createdAt'
-        },
-        'fact_thunderstorm': {
-            'location_id', 'event_datetime', 'thunderstorm_index', 'createdAt'
-        },
-        'fact_fog': {
-            'location_id', 'event_datetime', 'fog_index', 'visibility', 'createdAt'
-        },
-        'fact_gale': {
-            'location_id', 'event_datetime', 'knots', 'ms', 'degrees', 'direction', 'createdAt'
-        },
+        'dim_location': {'id', 'station', 'lat', 'lon', 'hp', 'country', 'gc', 'createdAt'},
+        'dim_cyclone': {'id', 'name', 'intensity', 'start_time', 'latest_time', 'updatedAt'},
+        'fact_heavy_rain': {'location_id', 'event_datetime', 'rainfall_mm', 'createdAt'},
+        'fact_thunderstorm': {'location_id', 'event_datetime', 'thunderstorm_index', 'createdAt'},
+        'fact_fog': {'location_id', 'event_datetime', 'fog_index', 'visibility', 'createdAt'},
+        'fact_gale': {'location_id', 'event_datetime', 'knots', 'ms', 'degrees', 'direction', 'createdAt'},
         'fact_cyclone_track': {
             'cyclone_id', 'event_datetime', 'lat', 'lon', 'intensity', 'pressure',
             'max_wind_speed', 'gust', 'speed_of_movement', 'movement_direction',
@@ -158,11 +148,10 @@ class WeatherLoadToBigQuery:
             return False
 
     def check_exact_schema(self, table: str, actual_columns: set) -> Optional[str]:
-        expected = self.EXACT_SCHEMA.get(table.lower())  # không phân biệt hoa thường
-
+        expected = self.EXACT_SCHEMA.get(table.lower())
         if not expected:
             defined_tables = ', '.join(sorted(self.EXACT_SCHEMA.keys()))
-            return (f"LỖI CẤU HÌNH: Bảng nguồn '{table}' không tồn tại hoặc sai chính tả trong EXACT_SCHEMA. "
+            return (f"LỖI CẤU HÌNH: Bảng nguồn '{table}' không tồn tại trong EXACT_SCHEMA. "
                     f"Chỉ chấp nhận: {defined_tables}")
 
         if actual_columns != expected:
@@ -192,47 +181,47 @@ class WeatherLoadToBigQuery:
                     INSERT INTO load_log
                     (status, record_count, source_name, table_name, message, start_at, end_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    status, record_count, source_table, target_table,
-                    message, start_at, end_at
-                ))
+                """, (status, record_count, source_table, target_table, message, start_at, end_at))
             log.info(f"LOG [{status}]: {message}")
+
+            # GỬI EMAIL CẢNH BÁO KHI FAILED
+            if status == "FAILED":
+                send_error_email(error_message=message, table_name=target_table)
+
         except Exception as e:
             log.warning(f"Không ghi log được: {e}")
 
     def process_table(self, mapping: Dict) -> bool:
-        src = mapping["source_table"]           # tên bảng trong MySQL (ví dụ: fact_heavy_rain)
-        dst = mapping["target_table"]           # tên bảng trong BigQuery (có thể giống hoặc khác)
+        src = mapping["source_table"]
+        dst = mapping["target_table"]
         ts_col = mapping.get("timestamp_column")
         load_type = mapping["load_type"]
 
         log.info(f"Đang xử lý: {src} → {dst} [{load_type}] (ts_col={ts_col or 'FULL'})")
         start_time = datetime.datetime.now(datetime.timezone.utc)
 
-        # 1. Lấy cột thực tế từ bảng nguồn
+        # 1. Kiểm tra bảng nguồn tồn tại
         try:
             with self.mysql_conn(self.STAGING_DB) as conn, conn.cursor() as cur:
                 cur.execute(f"SELECT * FROM `{src}` LIMIT 1")
                 first_row = cur.fetchone()
 
                 if not first_row:
-                    log.info(f"Bảng {src} rỗng → bỏ qua")
                     self.log_run(src, dst, "SUCCESS", 0, start_time,
-                                 datetime.datetime.now(datetime.timezone.utc))
+                                 datetime.datetime.now(datetime.timezone.utc),
+                                 "Bảng nguồn rỗng")
                     return True
 
                 actual_columns = set(first_row.keys())
 
         except Exception as e:
             end_time = datetime.datetime.now(datetime.timezone.utc)
-            error_msg = str(e)
-            if "doesn't exist" in error_msg.lower():
-                error_msg = f"Bảng nguồn '{src}' không tồn tại trong {self.STAGING_DB}"
-            log.error(f"LỖI TRUY VẤN: {error_msg}")
+            error_msg = f"Bảng nguồn '{src}' không tồn tại hoặc lỗi truy vấn: {str(e)}"
+            log.error(error_msg)
             self.log_run(src, dst, "FAILED", 0, start_time, end_time, error_msg)
             return False
 
-        # 2. Kiểm tra schema chính xác tuyệt đối
+        # 2. Kiểm tra schema chính xác
         schema_error = self.check_exact_schema(src, actual_columns)
         if schema_error:
             end_time = datetime.datetime.now(datetime.timezone.utc)
@@ -240,13 +229,12 @@ class WeatherLoadToBigQuery:
             self.log_run(src, dst, "FAILED", 0, start_time, end_time, schema_error)
             return False
 
-        # 3. Lấy dữ liệu (incremental hoặc full)
+        # 3. Lấy dữ liệu
         since = self.get_last_load_ts(src) if load_type == "incremental" and ts_col else None
         raw_data = self.fetch_data(src, ts_col, since)
 
         if not raw_data:
             end_time = datetime.datetime.now(datetime.timezone.utc)
-            log.info(f"Không có dữ liệu mới cho {src}")
             self.log_run(src, dst, "SUCCESS", 0, start_time, end_time)
             return True
 
@@ -258,32 +246,53 @@ class WeatherLoadToBigQuery:
         if success:
             self.log_run(src, dst, "SUCCESS", len(data), start_time, end_time)
         else:
-            self.log_run(src, dst, "FAILED", 0, start_time, end_time, "Load lên BigQuery thất bại")
+            error_msg = "Load dữ liệu lên BigQuery thất bại"
+            self.log_run(src, dst, "FAILED", 0, start_time, end_time, error_msg)
 
         return success
 
     def run(self):
         log.info("=== BẮT ĐẦU LOAD WEATHER → BIGQUERY ===")
         mappings = self.get_mappings()
+
         if not mappings:
-            log.error("KHÔNG TÌM THẤY MAPPING! Hãy kiểm tra bảng mapping_info trong db_etl_metadata")
+            error_msg = "KHÔNG TÌM THẤY MAPPING HOẠT ĐỘNG! Kiểm tra bảng mapping_info (is_active=1)"
+            log.error(error_msg)
+            send_error_email(error_msg, table_name="NO ACTIVE MAPPING")
             return
 
         success_count = 0
+        failed_tables: List[str] = []
+
         for m in mappings:
             if self.process_table(m):
                 success_count += 1
+            else:
+                failed_tables.append(m["target_table"])
 
-        log.info(f"HOÀN TẤT: {success_count}/{len(mappings)} bảng thành công")
+        total = len(mappings)
+        log.info(f"HOÀN TẤT: {success_count}/{total} bảng thành công")
 
+        # In báo cáo console
         print("\n" + "="*70)
         print("           WEATHER → BIGQUERY LOAD HOÀN TẤT")
         print("="*70)
-        print(f"   Tổng số bảng     : {len(mappings)}")
+        print(f"   Tổng số bảng     : {total}")
         print(f"   Thành công       : {success_count}")
-        print(f"   Thất bại         : {len(mappings) - success_count}")
+        print(f"   Thất bại         : {total - success_count}")
+        if failed_tables:
+            print(f"   Bảng thất bại    : {', '.join(failed_tables)}")
         print("="*70)
 
+        # GỬI EMAIL TỔNG HỢP CUỐI CÙNG
+        if total - success_count > 0:
+            summary_msg = (f"Load hoàn tất nhưng có {total - success_count}/{total} bảng thất bại.\n"
+                          f"Danh sách bảng lỗi: {', '.join(failed_tables)}")
+            send_error_email(summary_msg, table_name="TỔNG HỢP - CÓ LỖI", subject_prefix="[ETL ERROR]")
+        else:
+            send_error_email("Tất cả bảng đã được load thành công vào BigQuery!", 
+                            table_name="TỔNG HỢP - THÀNH CÔNG", 
+                            subject_prefix="[ETL SUCCESS]")
 
 if __name__ == "__main__":
     WeatherLoadToBigQuery().run()
