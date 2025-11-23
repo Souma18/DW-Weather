@@ -21,7 +21,7 @@ engine_elt, SessionELT = setup_database(DEFAULT_ELT_DB_URL,
                                                   lambda: log_email_status(to_email=DEFAULT_RECIEVER_EMAIL,
                                                                            subject= "LỖi hệ thống warehouse",
                                                                             content="Không thể kết nối với db db_elt_metadata"),
-                                                                            echo=True)
+                                                                            echo=False)
 import elt_metadata.models
 create_tables(engine_elt, BaseELT)
 
