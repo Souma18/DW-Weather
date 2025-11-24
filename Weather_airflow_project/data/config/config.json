@@ -1,7 +1,7 @@
 {
-    "db_url":{
-        "elt_db_url": "mysql+mysqlconnector://root:1@localhost:3306/db_etl_metadata",
-        "clean_db_url": "mysql+mysqlconnector://root:1@localhost:3306/db_stage_clean",
-        "transform_db_url": "mysql+mysqlconnector://root:1@localhost:3306/db_stage_transform"
+    "db_url": {
+      "elt_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql:3306/db_etl_metadata",
+      "clean_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql:3306/db_stage_clean",
+      "transform_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql:3306/db_stage_transform"
     }
-}
+  }
