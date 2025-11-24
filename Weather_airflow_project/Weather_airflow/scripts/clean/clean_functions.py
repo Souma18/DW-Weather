@@ -216,7 +216,6 @@ def clean_tc_track_row(row: Dict[str, Any]) -> Optional[TCTrack]:
         pressure=parse_hp(row.get("pressure")),
         max_wind_speed=parse_hp(row.get("max_wind_speed")),
         gust=parse_hp(row.get("gust")),
-        intensity_category=intensity_cat,
         wind_threshold_kt=wind_threshold_kt,
         NEQ_nm=NEQ,
         SEQ_nm=SEQ,

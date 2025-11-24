@@ -112,6 +112,9 @@ def process_etl():
             return
 
         for row in pending_files:
+            if row.status == "SUCCESSED":
+                 continue
+
             filename = row.file_name
             raw_data_type = str(row.data_type).strip().lower()
             table_name = get_base_type(raw_data_type)
