@@ -12,8 +12,8 @@ from sqlalchemy import create_engine, select, func, MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import NoSuchTableError
 
-# Import đúng theo cấu trúc dự án của bạn (dựa vào logger.py)
-from service.email_service import send_email  # ĐÚNG RỒI ĐÂY!
+# Import đúng theo cấu trúc của bạn
+from service.email_service import send_email
 from database.base import session_scope
 from elt_metadata.models import LoadLog, MappingInfo
 
@@ -47,6 +47,7 @@ class WeatherLoadToBigQuery:
         },
     }
 
+    # Từ khóa để nhận diện trạng thái "SKIP" (không gửi mail)
     SKIP_KEYWORDS = [
         "rỗng", "không có dữ liệu mới", "bảng nguồn rỗng",
         "không có dữ liệu để load", "bỏ qua load", "no new data", "empty"
@@ -55,16 +56,16 @@ class WeatherLoadToBigQuery:
     def __init__(self):
         key_path = os.path.join(os.path.dirname(__file__), "bigquery-key.json")
         if not os.path.exists(key_path):
-            raise FileNotFoundError(f"Không tìm thấy bigquery-key.json tại: {key_path}")
+            raise FileNotFoundError(f"Không tìm thấy file: {key_path}")
 
         creds = service_account.Credentials.from_service_account_file(key_path)
         self.bq = bigquery.Client(credentials=creds, project=self.PROJECT_ID)
-        log.info("Khởi tạo client BigQuery thành công")
+        log.info("Khởi tạo BigQuery client thành công")
 
         dataset_ref = f"{self.PROJECT_ID}.{self.DATASET_ID}"
         try:
             self.bq.get_dataset(dataset_ref)
-            log.info(f"Dataset '{self.DATASET_ID}' đã tồn tại.")
+            log.info(f"Dataset '{self.DATASET_ID}' đã tồn tại")
         except NotFound:
             dataset = bigquery.Dataset(dataset_ref)
             dataset.location = "asia-southeast1"
@@ -73,8 +74,6 @@ class WeatherLoadToBigQuery:
 
         self.staging_engine = create_engine(self.STAGING_DB_URL, echo=False, future=True)
         self.meta_engine = create_engine(self.META_DB_URL, echo=False, future=True)
-
-        self.StagingSession = sessionmaker(bind=self.staging_engine)
         self.MetaSession = sessionmaker(bind=self.meta_engine)
 
         metadata = MetaData()
@@ -83,41 +82,26 @@ class WeatherLoadToBigQuery:
             self.staging_metadata = metadata
             log.info(f"Reflect thành công {len(metadata.tables)} bảng từ staging DB")
         except Exception as e:
-            log.error(f"Lỗi reflect metadata staging: {e}")
+            log.error(f"Lỗi reflect metadata: {e}")
             self.staging_metadata = MetaData()
 
     def get_mappings(self) -> List[Dict]:
         with session_scope(self.MetaSession) as session:
-            rows = (
-                session.query(MappingInfo)
-                .filter(MappingInfo.is_active.is_(True))
-                .order_by(MappingInfo.load_order)
-                .all()
-            )
-            return [
-                {
-                    "source_table": r.source_table,
-                    "target_table": r.target_table,
-                    "timestamp_column": r.timestamp_column,
-                    "load_type": r.load_type,
-                }
-                for r in rows
-            ]
+            rows = session.query(MappingInfo).filter(MappingInfo.is_active.is_(True)).order_by(MappingInfo.load_order).all()
+            return [r.__dict__ for r in rows] if rows else []
 
     def get_last_load_ts(self, source_table: str) -> Optional[datetime.datetime]:
         with session_scope(self.MetaSession) as session:
-            ts = (
-                session.query(func.max(LoadLog.end_at))
-                .filter(LoadLog.source_name == source_table, LoadLog.status == "SUCCESS")
-                .scalar()
-            )
+            ts = session.query(func.max(LoadLog.end_at))\
+                        .filter(LoadLog.source_name == source_table, LoadLog.status == "SUCCESS")\
+                        .scalar()
             if ts and ts.tzinfo is None:
                 ts = ts.replace(tzinfo=datetime.timezone.utc)
             return ts
 
     def fetch_data(self, table_name: str, ts_col: Optional[str], since: Optional[datetime.datetime]) -> List[Dict]:
         if table_name not in self.staging_metadata.tables:
-            raise NoSuchTableError(f"Bảng nguồn '{table_name}' không tồn tại trong db_stage_transform")
+            raise NoSuchTableError(f"Bảng '{table_name}' không tồn tại trong staging DB")
 
         table = self.staging_metadata.tables[table_name]
         query = select(table)
@@ -129,7 +113,7 @@ class WeatherLoadToBigQuery:
             return [dict(row._mapping) for row in result.fetchall()]
 
     def transform_rows(self, rows: List[Dict]) -> List[Dict]:
-        result = []
+        transformed = []
         for row in rows:
             new_row = {}
             for k, v in row.items():
@@ -141,8 +125,8 @@ class WeatherLoadToBigQuery:
                     new_row[k] = float(v)
                 else:
                     new_row[k] = v
-            result.append(new_row)
-        return result
+            transformed.append(new_row)
+        return transformed
 
     def load_to_bq(self, rows: List[Dict], target_table: str, load_type: str) -> bool:
         if not rows:
@@ -180,12 +164,12 @@ class WeatherLoadToBigQuery:
         if actual != expected:
             missing = ", ".join(sorted(expected - actual))
             extra = ", ".join(sorted(actual - expected))
-            parts = []
+            errors = []
             if missing:
-                parts.append(f"thiếu cột: {missing}")
+                errors.append(f"thiếu cột: {missing}")
             if extra:
-                parts.append(f"cột thừa: {extra}")
-            return f"Schema không khớp với yêu cầu cho bảng '{table_name}': {'; '.join(parts)}"
+                errors.append(f"cột thừa: {extra}")
+            return f"Schema không khớp cho bảng '{table_name}': {'; '.join(errors)}"
         return None
 
     def process_table(self, mapping: Dict) -> bool:
@@ -195,43 +179,41 @@ class WeatherLoadToBigQuery:
         load_type = mapping["load_type"]
         start_time = datetime.datetime.now(datetime.timezone.utc)
 
-        log.info(f"Bắt đầu xử lý: {src} → {dst} [{load_type}]")
+        log.info(f"→ Bắt đầu xử lý: {src} → {dst} [{load_type}]")
 
-        if schema_err := self.check_exact_schema(src):
-            self.log_and_notify(src, dst, "FAILED", 0, start_time, schema_err)
+        # 1. Kiểm tra schema
+        if err := self.check_exact_schema(src):
+            self.log_and_notify(src, dst, "FAILED", 0, start_time, err)
             return False
 
-        table = self.staging_metadata.tables[src]
+        # 2. Kiểm tra bảng rỗng
         with self.staging_engine.connect() as conn:
-            row_count = conn.execute(select(func.count()).select_from(table)).scalar()
-            if row_count == 0:
-                msg = "Bảng nguồn rỗng → bỏ qua load"
-                self.log_and_notify(src, dst, "SUCCESS", 0, start_time, msg)
-                return True
+            row_count = conn.execute(select(func.count()).select_from(self.staging_metadata.tables[src])).scalar()
+        if row_count == 0:
+            self.log_and_notify(src, dst, "SUCCESS", 0, start_time, "Bảng nguồn rỗng → bỏ qua load")
+            return True
 
+        # 3. Lấy dữ liệu
         since = self.get_last_load_ts(src) if load_type == "incremental" and ts_col else None
-
         try:
             data = self.fetch_data(src, ts_col, since)
         except Exception as e:
-            error_msg = f"Lỗi truy vấn dữ liệu từ bảng nguồn '{src}': {str(e)}"
-            self.log_and_notify(src, dst, "FAILED", 0, start_time, error_msg)
+            self.log_and_notify(src, dst, "FAILED", 0, start_time, f"Lỗi truy vấn dữ liệu từ bảng '{src}': {e}")
             return False
 
         if not data:
-            msg = "Không có dữ liệu mới để load"
-            self.log_and_notify(src, dst, "SUCCESS", 0, start_time, msg)
+            self.log_and_notify(src, dst, "SUCCESS", 0, start_time, "Không có dữ liệu mới để load")
             return True
 
+        # 4. Load lên BigQuery
         transformed = self.transform_rows(data)
         success = self.load_to_bq(transformed, dst, load_type)
 
+        # 5. Ghi log kết quả cuối cùng (chỉ 1 lần)
         if success:
-            msg = f"Load thành công {len(data):,} bản ghi vào {dst}"
-            self.log_and_notify(src, dst, "SUCCESS", len(data), start_time, msg)
+            self.log_and_notify(src, dst, "SUCCESS", len(data), start_time, f"Load thành công {len(data):,} bản ghi vào {dst}")
         else:
-            msg = f"Load thất bại vào BigQuery table '{dst}'. Vui lòng kiểm tra log và dữ liệu nguồn."
-            self.log_and_notify(src, dst, "FAILED", len(data), start_time, msg)
+            self.log_and_notify(src, dst, "FAILED", len(data), start_time, f"Load thất bại vào BigQuery table '{dst}'")
 
         return success
 
@@ -255,20 +237,21 @@ class WeatherLoadToBigQuery:
             end_at=end_at,
         )
 
-        # Ghi log vào DB (luôn luôn)
+        # Ghi log vào DB
         with session_scope(self.MetaSession) as session:
             session.add(log_obj)
 
-        # Kiểm tra trạng thái SKIP
-        is_skip = any(keyword.lower() in message.lower() for keyword in self.SKIP_KEYWORDS)
+        # Kiểm tra có phải là trạng thái bỏ qua không
+        is_skip = any(kw.lower() in message.lower() for kw in self.SKIP_KEYWORDS)
 
+        # Gửi email CHỈ khi FAILED và không phải skip
         if status == "FAILED":
             log.error(f"FAILED | {dst} | {message}")
             send_email(
                 to_email=ALERT_EMAIL,
                 subject="LỖI LOAD DỮ LIỆU WEATHER",
                 content="",
-                error_message=message,           # ĐÃ SỬA: BẮT BUỘC PHẢI CÓ
+                error_message=message,
                 table_name=dst,
                 subject_prefix="CẢNH BÁO LỖI ETL"
             )
@@ -282,7 +265,7 @@ class WeatherLoadToBigQuery:
         mappings = self.get_mappings()
 
         if not mappings:
-            error_msg = "Không tìm thấy mapping nào có is_active = True trong bảng MappingInfo"
+            error_msg = "Không tìm thấy mapping nào có is_active = True"
             log.error(error_msg)
             with session_scope(self.MetaSession) as session:
                 session.add(LoadLog(
@@ -295,7 +278,7 @@ class WeatherLoadToBigQuery:
                 to_email=ALERT_EMAIL,
                 subject="KHÔNG CÓ MAPPING HOẠT ĐỘNG",
                 content="",
-                error_message=error_msg,        # ĐÃ SỬA: THÊM DÒNG NÀY
+                error_message=error_msg,
                 table_name="HỆ THỐNG",
                 subject_prefix="FATAL ERROR"
             )
