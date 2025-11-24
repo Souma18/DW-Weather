@@ -4,8 +4,8 @@ from sqlalchemy import Enum
 from database import BaseELT
 
 
-class MappingInfo(BaseELT):
-    __tablename__ = "mapping_info"
+class LoadLog(BaseELT):
+    __tablename__ = "load_log"
 
     id               = Column(Integer, primary_key=True, autoincrement=True, comment="Khóa chính tự tăng")
     source_table     = Column(String(100), nullable=False, comment="Tên bảng nguồn trong db_stage_transform")
@@ -15,19 +15,6 @@ class MappingInfo(BaseELT):
     load_order       = Column(Integer, default=99, comment="Thứ tự chạy (số nhỏ chạy trước)")
     is_active        = Column(Boolean, default=True, comment="Bật/tắt bảng này")
     note             = Column(String(255), nullable=True, comment="Ghi chú thêm")
-
-
-class LoadLog(BaseELT):
-    __tablename__ = "load_log"
-    id           = Column(Integer, primary_key=True, autoincrement=True)
-    status       = Column(String(20), nullable=False)
-    record_count = Column(Integer, nullable=True)
-    source_name  = Column(String(255), nullable=True)
-    table_name   = Column(Text, nullable=True)
-    message      = Column(Text, nullable=True)
-    start_at     = Column(DateTime, nullable=True)
-    end_at       = Column(DateTime, nullable=True)
-
 
 class TransformLog(BaseELT):
     __tablename__ = "transform_log"

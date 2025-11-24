@@ -15,7 +15,7 @@ from sqlalchemy.exc import NoSuchTableError
 # Import đúng theo cấu trúc của bạn
 from service.email_service import send_email
 from database.base import session_scope
-from elt_metadata.models import LoadLog, MappingInfo
+from elt_metadata.models import TransformLog, LoadLog
 
 logging.basicConfig(
     level=logging.INFO,
@@ -87,13 +87,13 @@ class WeatherLoadToBigQuery:
 
     def get_mappings(self) -> List[Dict]:
         with session_scope(self.MetaSession) as session:
-            rows = session.query(MappingInfo).filter(MappingInfo.is_active.is_(True)).order_by(MappingInfo.load_order).all()
+            rows = session.query(LoadLog).filter(LoadLog.is_active.is_(True)).order_by(LoadLog.load_order).all()
             return [r.__dict__ for r in rows] if rows else []
 
     def get_last_load_ts(self, source_table: str) -> Optional[datetime.datetime]:
         with session_scope(self.MetaSession) as session:
-            ts = session.query(func.max(LoadLog.end_at))\
-                        .filter(LoadLog.source_name == source_table, LoadLog.status == "SUCCESS")\
+            ts = session.query(func.max(TransformLog.end_at))\
+                        .filter(TransformLog.source_name == source_table, TransformLog.status == "SUCCESS")\
                         .scalar()
             if ts and ts.tzinfo is None:
                 ts = ts.replace(tzinfo=datetime.timezone.utc)
@@ -227,7 +227,7 @@ class WeatherLoadToBigQuery:
         message: str,
     ):
         end_at = datetime.datetime.now(datetime.timezone.utc)
-        log_obj = LoadLog(
+        log_obj = TransformLog(
             status=status,
             record_count=count,
             source_name=src,
@@ -268,7 +268,7 @@ class WeatherLoadToBigQuery:
             error_msg = "Không tìm thấy mapping nào có is_active = True"
             log.error(error_msg)
             with session_scope(self.MetaSession) as session:
-                session.add(LoadLog(
+                session.add(TransformLog(
                     status="FAILED",
                     message=error_msg,
                     start_at=datetime.datetime.now(datetime.timezone.utc),

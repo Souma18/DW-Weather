@@ -12,7 +12,7 @@ class TransformLogger:
         self.logs = {
             "dim_location": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
             "dim_cyclone": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
-            "fact_heavy_rain": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
+            "fact_heavy_rain_snow": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
             "fact_gale": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
             "fact_fog": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
             "fact_thunderstorm": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
@@ -74,16 +74,24 @@ def get_or_create_location(session, clean_obj, logger, source_name=None):
         logger.update("dim_location", source_name, location.createdAt)
     return location
 
-def get_or_create_cyclone(session, clean_obj, logger, source_name=None):
+def get_or_create_cyclone(session, clean_obj, logger,isGetter=True, source_name=None):
     """
     Kiểm tra và tạo cyclone duy nhất dựa trên storm_id.
     Ràng buộc: storm_id không được trùng lặp.
     """
-    cyclone = session.query(DimCyclone).filter(DimCyclone.storm_id == clean_obj.storm_id).first()
+    cyclone = (
+        session.query(DimCyclone)
+        .filter(
+            DimCyclone.storm_id == clean_obj.storm_id
+            if isGetter
+            else DimCyclone.sys_id == clean_obj.sysid
+        )
+        .first()
+    )
         
     if cyclone is None:
         cyclone = DimCyclone(
-            storm_id = clean_obj.storm_id,
+            sys_id = clean_obj.sysid,
             updatedAt=datetime.now(),
         )
         session.add(cyclone)
@@ -99,23 +107,21 @@ def transform_heavy_rain(clean_obj, session, logger, source_name=None):
     location = get_or_create_location(session, clean_obj, logger, source_name=source_name)
     
     # Kiểm tra trùng lặp: (location_id, event_datetime)
-    existing = session.query(FactHeavyRain).filter(
-        FactHeavyRain.location_id == location.id,
-        FactHeavyRain.event_datetime == clean_obj.datetime
-    ).first()
+    existing = session.query(FactHeavyRainSnow).filter(
+        FactHeavyRainSnow.location_id == location.id
+        ).first()
     
     if existing is not None:
         return  # Đã tồn tại, bỏ qua
     
-    heavy_rain = FactHeavyRain(
+    heavy_rain = FactHeavyRainSnow(
         location_id=location.id,
-        event_datetime=clean_obj.datetime,
         rainfall_mm=clean_obj.hvyrain,
         hp=clean_obj.hp,
         createdAt=datetime.now(),
     )
     session.add(heavy_rain)
-    logger.update("fact_heavy_rain", source_name, heavy_rain.createdAt)
+    logger.update("fact_heavy_rain_snow", source_name, heavy_rain.createdAt)
 
 def transform_thunderstorm(clean_obj, session, logger, source_name=None):
     """
@@ -204,10 +210,11 @@ def transform_tc(clean_obj, session, logger, source_name=None):
     Transform tropical cyclone (TC) data.
     Cập nhật thông tin cyclone nếu đã tồn tại.
     """
-    cyclone = get_or_create_cyclone(session, clean_obj, logger, source_name=source_name)
+    cyclone = get_or_create_cyclone(session, clean_obj, logger,False, source_name=source_name)
     if(cyclone.name is None):
         cyclone.name = clean_obj.name
         cyclone.sys_id = clean_obj.sysid
+        cyclone.storm_id = clean_obj.storm_id
         cyclone.intensity = clean_obj.intensity
         cyclone.start_time = clean_obj.start
         cyclone.latest_time = clean_obj.latest
@@ -224,7 +231,7 @@ def transform_cyclone_track(clean_obj, session, logger, source_name=None):
             self.storm_id = storm_id
             
     temp_obj = TempCycloneObj(clean_obj.tc_id)
-    cyclone = get_or_create_cyclone(session, temp_obj, logger, source_name=source_name)
+    cyclone = get_or_create_cyclone(session, temp_obj,logger, source_name=source_name)
     
     # Kiểm tra trùng lặp: (cyclone_id, analysis_time)
     existing = session.query(FactCycloneTrack).filter(
@@ -258,8 +265,8 @@ def transform_cyclone_track(clean_obj, session, logger, source_name=None):
 
     
 TRANSFORM_HANDLERS = {
-    "heavyrain": (HeavyRain, transform_heavy_rain),
-    "heavyrain_snow": (Thunderstorms, transform_thunderstorm),
+    "heavyrain_snow": (HeavyRain, transform_heavy_rain),
+    "thunderstorms": (Thunderstorms, transform_thunderstorm),
     "fog": (Fog, transform_fog),
     "gale": (Gale, transform_gale),
     "tc_track": (TCTrack, transform_cyclone_track),
