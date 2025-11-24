@@ -6,6 +6,7 @@ from database.setup_db import setup_database
 from etl_metadata.setup_db import *
 from clean.setup_db import connection_clean
 from etl_metadata.models import TransformLog
+
 from sqlalchemy.orm import declarative_base
 engine_elt, SessionELT = connection_elt()
 create_table(engine_elt)

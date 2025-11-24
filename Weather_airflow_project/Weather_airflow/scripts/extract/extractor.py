@@ -17,7 +17,7 @@ from database.setup_db import SessionELT, DEFAULT_RECIEVER_EMAIL
 from database.logger import log_dual_status
 from extract.log_service import LogService
 from sqlalchemy import func
-from elt_metadata.models import LogExtractRun, TransformLog
+from etl_metadata.models import LogExtractRun, TransformLog
 
 # Xác định thư mục gốc project và thư mục data dùng chung
 # - Mặc định: <project_root>/data

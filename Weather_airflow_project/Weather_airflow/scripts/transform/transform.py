@@ -1,5 +1,6 @@
 from datetime import datetime
-from database.setup_db import SessionClean, SessionTransform, SessionELT, DEFAULT_RECIEVER_EMAIL
+from transform.setup_db import *
+engine_transform, SessionTransform = connection_transform()
 from database.base import session_scope
 from database.logger import log_dual_status
 from transform.check_log import success_logs
@@ -46,7 +47,6 @@ class TransformLogger:
             log_dual_status(
                 transform_log, 
                 SessionELT, 
-                DEFAULT_RECIEVER_EMAIL, 
                 f"ETL Transform: Thành công - {table_name}", 
                 f"Thông báo: {msg}\nSố bản ghi: {log_data['record_count']}\nNguồn dữ liệu: {log_data['source_name']}"
             )

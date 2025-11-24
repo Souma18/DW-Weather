@@ -1,12 +1,12 @@
 from database.base import session_scope
-from database.setup_db import SessionELT,SessionClean
+from clean.setup_db import *
+engine_clean, SessionClean = connection_clean()
 from etl_metadata.models import LogExtractEvent
 import os
 from sqlalchemy import (
     create_engine, MetaData, Table,
     Column, Integer, String, JSON
 )
-from database.setup_db import  BaseClean
 metadata = MetaData()
 from clean.models import Fog, Gale, HeavyRain, Thunderstorms, TCTrack, TC
 import csv

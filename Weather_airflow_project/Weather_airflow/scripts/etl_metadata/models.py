@@ -1,6 +1,6 @@
 from datetime import datetime
-from sqlalchemy import CHAR, VARCHAR, Column, BigInteger, Integer, String, Date, DateTime, Text, ForeignKey
-from . import BaseELT
+from sqlalchemy import CHAR, VARCHAR, Boolean, Column, BigInteger, Integer, String, Date, DateTime, Text, ForeignKey
+from database import BaseELT
 import uuid
 from sqlalchemy.orm import relationship
 
@@ -34,14 +34,16 @@ class CleanLog(BaseELT):
 class LoadLog(BaseELT):
     __tablename__ = "load_log"
 
-    id           = Column(Integer, primary_key=True, autoincrement=True, comment="Khóa chính log")
-    status       = Column(String(20), nullable=False, comment="Trạng thái bước load")
-    record_count = Column(Integer, nullable=True, comment="Số bản ghi đã load")
-    source_name  = Column(String(255), nullable=True, comment="Tên bảng nguồn trong staging")
-    table_name   = Column(Text, nullable=True, comment="Tên bảng đích trong BigQuery")
-    message      = Column(Text, nullable=True, comment="Chi tiết log, cảnh báo hoặc lỗi")
-    start_at     = Column(DateTime, nullable=True, comment="Thời gian bắt đầu load")
-    end_at       = Column(DateTime, nullable=True, comment="Thời gian kết thúc load")
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="Khóa chính tự tăng")
+    source_table = Column(String(100), nullable=False, comment="Tên bảng nguồn trong db_stage_transform")
+    target_table = Column(String(100), nullable=False, comment="Tên bảng đích trong BigQuery")
+    timestamp_column = Column(String(100), nullable=True, comment="Cột timestamp để incremental (NULL = full load)")
+    load_type = Column(String(20), nullable=False, default="incremental", comment="Kiểu load: full hoặc incremental")
+    load_order = Column(Integer, default=99, comment="Thứ tự chạy (số nhỏ chạy trước, Dim trước Fact)")
+    is_active = Column(Boolean, default=True, comment="Bật/tắt bảng này (TRUE = load, FALSE = bỏ qua)")
+    last_loaded_timestamp = Column(DateTime, nullable=True, comment="Thời điểm load gần nhất")
+    note = Column(String(255), nullable=True, comment="Ghi chú thêm (ví dụ lý do full load)")
+
     
 class LogExtractRun(BaseELT):
     __tablename__ = "log_extract_run"

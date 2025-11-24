@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Numeric, Text
 from sqlalchemy.orm import relationship
 
-from . import BaseTransform
+from database import BaseTransform
 
 
 # ------------------------
