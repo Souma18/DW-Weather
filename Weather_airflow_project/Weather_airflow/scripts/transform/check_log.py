@@ -1,5 +1,5 @@
 from sqlalchemy import inspect
-from database.setup_db import SessionELT
+from transform.setup_db import SessionELT
 from database.base import session_scope
 from database.logger import log_dual_status
 from etl_metadata.models import CleanLog, TransformLog
@@ -11,18 +11,18 @@ today_start = datetime.combine(datetime.today(), datetime.min.time())
 success_logs = []
 with session_scope(SessionELT) as session:
     success_logs = session.query(CleanLog).filter(
-        CleanLog.status.in_(["SUCCESS"])
+        CleanLog.status == "CLEANED"
     ).all()
     success_logs = [row_to_dict(r) for r in success_logs]  # convert ORM → dict
 
     if not success_logs:
         transform_log = TransformLog(
-            status="Failure",
+            status="FAILED",
             record_count=0,
             message="Hôm nay job clean chưa có dữ liệu mới.",
             start_at=today_start,
             end_at=datetime.now()
         )
         log_dual_status(transform_log, SessionELT,
-                        to_email="minhhien7840@gmail.com", subject="Lỗi hệ thống DW-Weather",
+                        subject="Lỗi hệ thống DW-Weather",
                         content="Hôm nay job clean chưa có dữ liệu mới.")

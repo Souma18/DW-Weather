@@ -1,3 +1,4 @@
+from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import os
@@ -11,11 +12,13 @@ def send_email(to_email: str, subject: str, content: str, html: bool = True):
         msg = MIMEMultipart("alternative")
         msg["From"] = SENDER_EMAIL
         msg["To"] = to_email
-        msg["Subject"] = subject
+        msg["Subject"] = Header(subject, "utf-8")
+
+        # Encode body Unicode-safe
         if html:
-            msg.attach(MIMEText(content, "html"))
+            msg.attach(MIMEText(content, "html", "utf-8"))
         else:
-            msg.attach(MIMEText(content, "plain"))
+            msg.attach(MIMEText(content, "plain", "utf-8"))
         # Kết nối SMTP server và gửi email
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)

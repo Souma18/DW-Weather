@@ -11,7 +11,7 @@ def log_db_status(log_obj, SessionLocal):
     with session_scope(SessionLocal) as session:
         session.add(log_obj)
 
-def log_dual_status(log_obj, SessionLocal, to_email, subject: str, content: str):
+def log_dual_status(log_obj, SessionLocal, subject: str, content: str, to_email= None):
     # 1. Log to Database
     try:
         log_db_status(log_obj, SessionLocal)

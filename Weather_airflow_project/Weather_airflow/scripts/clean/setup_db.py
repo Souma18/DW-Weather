@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime 
 from database.base import create_tables
 from database.logger import log_dual_status
 from database.setup_db import setup_database
@@ -8,12 +8,12 @@ from etl_metadata.setup_db import *
 engine_elt, SessionELT = connection_elt()
 create_table(engine_elt)
 
-def create_table(engine_clean):
+def create_table_clean(engine_clean):
     import clean.models
     create_tables(engine_clean, BaseClean)
 def connection_clean():
     clean_log_error = CleanLog(
-        status="Failure",
+        status="FAILED",
         total_rows=0,
         inserted_rows=0,
         error_msg="Kết nối không thành công đến db_stage_clean",

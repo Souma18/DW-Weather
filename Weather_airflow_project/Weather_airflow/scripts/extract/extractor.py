@@ -13,7 +13,7 @@ from requests import exceptions as requests_exc
 from urllib.parse import urlparse
 import re
 from database.base import session_scope
-from database.setup_db import SessionELT, DEFAULT_RECIEVER_EMAIL
+from extract.setup_db import SessionELT
 from database.logger import log_dual_status
 from extract.log_service import LogService
 from sqlalchemy import func
@@ -487,7 +487,6 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                 log_dual_status(
                     log_obj,
                     SessionELT,
-                    DEFAULT_RECIEVER_EMAIL,
                     "ETL Extract: Không đọc được file links",
                     f"Job extract không thể đọc file links.\nChi tiết: {e}",
                 )
@@ -506,7 +505,6 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                 log_dual_status(
                     log_obj,
                     SessionELT,
-                    DEFAULT_RECIEVER_EMAIL,
                     "ETL Extract: Lỗi khi load links",
                     f"Job extract gặp lỗi khi load links.\nChi tiết: {e}",
                 )
@@ -526,7 +524,6 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                 log_dual_status(
                     log_obj,
                     SessionELT,
-                    DEFAULT_RECIEVER_EMAIL,
                     "ETL Extract: Không có link hợp lệ",
                     (
                         "Job extract không có URL nào để xử lý "
@@ -603,7 +600,7 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                         log.create_event(
                             run=run_entry,
                             step="EXTRACT",
-                            status="SUCCESS",
+                            status="EXTRACTED",
                             url=url,
                             file_name=file_name,
                             data_type=data_type,
@@ -672,7 +669,6 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                 log_dual_status(
                     log_obj,
                     SessionELT,
-                    DEFAULT_RECIEVER_EMAIL,
                     "ETL Extract: TẤT CẢ URL LỖI",
                     msg,
                 )
@@ -698,7 +694,6 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                 log_dual_status(
                     log_obj,
                     SessionELT,
-                    DEFAULT_RECIEVER_EMAIL,
                     "ETL Extract: KHÔNG CÓ FILE CSV NÀO",
                     msg,
                 )
@@ -730,7 +725,6 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                 log_dual_status(
                     log_obj,
                     SessionELT,
-                    DEFAULT_RECIEVER_EMAIL,
                     "ETL Extract: JOB BỊ CRASH",
                     msg,
                 )

@@ -5,4 +5,3 @@ def setup_database(config_name, logger, echo=False):
     url = db_url[config_name]
     engine, SessionLocal = create_engine_and_session(url, logger, echo=echo)
     return engine, SessionLocal
-

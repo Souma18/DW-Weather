@@ -1,8 +1,9 @@
 from datetime import datetime
 from transform.setup_db import *
 engine_transform, SessionTransform = connection_transform()
+create_table_transform(engine_transform)
 from database.base import session_scope
-from database.logger import log_dual_status
+from database.logger import log_db_status
 from transform.check_log import success_logs
 from etl_metadata.models import TransformLog
 from transform.models import *
@@ -35,7 +36,7 @@ class TransformLogger:
             
             msg = f"Đã chèn {log_data['record_count']} bản ghi mới cho bảng {table_name} thành công."
             transform_log = TransformLog(
-                status="Success",
+                status="TRANSFORMED",
                 record_count=log_data["record_count"],
                 source_name=", ".join(log_data["source_name"]),
                 table_name=table_name,
@@ -44,11 +45,9 @@ class TransformLogger:
                 end_at=log_data["end_at"] if log_data["end_at"] else datetime.now(),
             )
             
-            log_dual_status(
+            log_db_status(
                 transform_log, 
-                SessionELT, 
-                f"ETL Transform: Thành công - {table_name}", 
-                f"Thông báo: {msg}\nSố bản ghi: {log_data['record_count']}\nNguồn dữ liệu: {log_data['source_name']}"
+                SessionELT
             )
 
 def get_or_create_location(session, clean_obj, logger, source_name=None):
