@@ -3,7 +3,7 @@ from database.setup_db import SessionClean, SessionTransform, SessionELT, DEFAUL
 from database.base import session_scope
 from database.logger import log_dual_status
 from transform.check_log import success_logs
-from elt_metadata.models import TransformLog
+from etl_metadata.models import TransformLog
 from transform.models import *
 from clean.models import *
 

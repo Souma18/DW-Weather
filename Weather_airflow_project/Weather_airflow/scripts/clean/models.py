@@ -1,4 +1,4 @@
-from database import BaseClean
+from . import BaseClean
 from sqlalchemy import Column, Integer, Float, String, DateTime
 
 class Fog(BaseClean):

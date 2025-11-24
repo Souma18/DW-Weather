@@ -15,7 +15,7 @@ from sqlalchemy.exc import NoSuchTableError
 # Import đúng theo cấu trúc của bạn
 from service.email_service import send_email
 from database.base import session_scope
-from elt_metadata.models import TransformLog, LoadLog
+from etl_metadata.models import TransformLog, LoadLog
 
 logging.basicConfig(
     level=logging.INFO,

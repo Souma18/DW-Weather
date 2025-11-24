@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import CHAR, VARCHAR, Column, BigInteger, Integer, String, Date, DateTime, Text, ForeignKey
-from database import BaseELT
+from . import BaseELT
 import uuid
 from sqlalchemy.orm import relationship
 

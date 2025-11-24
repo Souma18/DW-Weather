@@ -1,6 +1,6 @@
 from database.base import session_scope
 from database.setup_db import SessionELT,SessionClean
-from elt_metadata.models import LogExtractEvent
+from etl_metadata.models import LogExtractEvent
 import os
 from sqlalchemy import (
     create_engine, MetaData, Table,
@@ -11,7 +11,7 @@ metadata = MetaData()
 from clean.models import Fog, Gale, HeavyRain, Thunderstorms, TCTrack, TC
 import csv
 from clean.clean_functions import CLEAN_FUNCTIONS
-from elt_metadata.models import  CleanLog
+from etl_metadata.models import  CleanLog
 from service.email_service import send_email
 from database.logger import log_dual_status
 

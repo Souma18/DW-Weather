@@ -2,7 +2,7 @@ from sqlalchemy import inspect
 from database.setup_db import SessionELT
 from database.base import session_scope
 from database.logger import log_dual_status
-from elt_metadata.models import CleanLog, TransformLog
+from etl_metadata.models import CleanLog, TransformLog
 from datetime import datetime
 
 def row_to_dict(row):

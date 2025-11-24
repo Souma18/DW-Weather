@@ -1,6 +1,6 @@
 # log_service.py
 from datetime import datetime
-from elt_metadata.models import LogExtractRun, LogExtractEvent
+from etl_metadata.models import LogExtractRun, LogExtractEvent
 
 class LogService:
     """

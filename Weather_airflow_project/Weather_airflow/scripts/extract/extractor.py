@@ -16,7 +16,7 @@ from database.base import session_scope
 from database.setup_db import SessionELT
 from extract.log_service import LogService
 from sqlalchemy import func
-from elt_metadata.models import LogExtractRun
+from etl_metadata.models import LogExtractRun
 
 
 # Xác định thư mục gốc project và thư mục data dùng chung
