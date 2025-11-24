@@ -9,9 +9,10 @@ PROJECT_ROOT = os.path.abspath(SCRIPTS_DIR)
 sys.path.append(PROJECT_ROOT)
 from load.load_to_bigquery import WeatherLoadToBigQuery
 from transform.transform import run_transform
-
+from clean.clean_process import run_clean_and_insert_all
+from extract.extractor import run
 def main() -> None:
-    run_transform()
+    run_clean_and_insert_all()
 
 
 if __name__ == "__main__":

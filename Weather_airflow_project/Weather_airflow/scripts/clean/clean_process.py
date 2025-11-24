@@ -103,50 +103,77 @@ def run_clean_and_insert_all():
             rows = parse_file(file_path)
         except Exception as e:
             print(f"[ERROR] Không đọc được file: {e}")
-            continue
 
-        headers = rows[0]
-        records = rows[1:]
-        batch = []
-
-        for row in records:
-            row_dict = dict(zip(headers, row))
-            cleaned = clean_fn(row_dict)
-            if cleaned:
-                batch.append(cleaned)
-
-        if not batch:
-            print(f"[WARNING] Không có dữ liệu hợp lệ trong {file_path}")
-            continue
-
-        # Insert DB
-                # Insert DB
-        try:
-            with session_scope(SessionClean) as session:
-                session.add_all(batch)
-                inserted_count = len(batch)
-                print(f"[OK] Inserted {inserted_count} rows from {data_type}")
-        except Exception as e:
-            print(f"[DB ERROR] Lỗi insert data_clean: {e}")
-
-            # Ghi log lỗi vào clean_log
+            # LOG lỗi đọc file
             with session_scope(SessionELT) as session:
                 clean_log = CleanLog(
                     file_name=os.path.basename(file_path),
                     status="FAILED",
-                    total_rows=len(records),
+                    total_rows=0,
                     inserted_rows=0,
                     error_msg=str(e),
+                    start_index=None,
+                    end_index=None,
+                    fail_range=None,
                     table_type=data_type
                 )
                 session.add(clean_log)
-
             continue
 
-        #  Update log_extract_event + insert clean_log
+        headers = rows[0]
+        records = rows[1:]
+        total_rows = len(records)
+        batch = []
+        fail_indices = []
+
+        for idx, row in enumerate(records):
+            try:
+                row_dict = dict(zip(headers, row))
+                cleaned = clean_fn(row_dict)
+                if cleaned:
+                    batch.append(cleaned)
+                else:
+                    fail_indices.append(idx)
+            except Exception:
+                fail_indices.append(idx)
+                continue
+
+        inserted_count = len(batch)
+
+        if fail_indices:
+            fail_range = f"{fail_indices[0]}-{fail_indices[-1]}"
+        else:
+            fail_range = None
+
+        # Insert DB
+        try:
+            with session_scope(SessionClean) as session:
+                session.add_all(batch)
+                print(f"[OK] Inserted {inserted_count} rows from {data_type}")
+
+        except Exception as e:
+            print(f"[DB ERROR] Lỗi insert data_clean: {e}")
+
+            # LOG lỗi DB
+            with session_scope(SessionELT) as session:
+                clean_log = CleanLog(
+                    file_name=os.path.basename(file_path),
+                    status="FAILED",
+                    total_rows=total_rows,
+                    inserted_rows=0,
+                    error_msg=str(e),
+                    start_index=0,
+                    end_index=total_rows,
+                    fail_range="0-" + str(total_rows),
+                    table_type=data_type
+                )
+                session.add(clean_log)
+            continue
+
+        # Ghi CLEAN SUCCESS LOG + cập nhật LogExtractEvent
         try:
             with session_scope(SessionELT) as session:
-                # Cập nhật log_extract_event thành CLEANED
+                # update LogExtractEvent
                 log_row = (
                     session.query(LogExtractEvent)
                     .filter(LogExtractEvent.file_name == os.path.basename(file_path))
@@ -156,13 +183,16 @@ def run_clean_and_insert_all():
                 if log_row:
                     log_row.status = "CLEANED"
 
-                # Ghi clean_log
+                # ghi clean log
                 clean_log = CleanLog(
                     file_name=os.path.basename(file_path),
                     status="SUCCESS",
-                    total_rows=len(records),
+                    total_rows=total_rows,
                     inserted_rows=inserted_count,
                     error_msg=None,
+                    start_index=0 if inserted_count else None,
+                    end_index=inserted_count,
+                    fail_range=fail_range,
                     table_type=data_type
                 )
                 session.add(clean_log)
@@ -171,7 +201,3 @@ def run_clean_and_insert_all():
 
         except Exception as e:
             print(f"[LOG ERROR] Không update được log: {e}")
-
-
-        
-        
