@@ -6,15 +6,21 @@ services:
     container_name: mysql_etl_staging
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: 1      # mật khẩu root
-      MYSQL_USER: etl_user                   # user cho ETL
-      MYSQL_PASSWORD: etl_password           # mật khẩu của user
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} # mật khẩu root
+      MYSQL_USER: ${MYSQL_USER}                   # user cho ETL
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}           # mật khẩu của user
     ports:
       - "3306:3306"                          # ánh xạ port 3306 ra ngoài
     volumes:
       - mysql_data:/var/lib/mysql            # volume chứa dữ liệu MySQL
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql # (tùy chọn) script khởi tạo DB
+    networks:
+      - weather_net
 
 volumes:
   mysql_data:
     driver: local
+
+networks:
+  weather_net:
+    name: weather_net
