@@ -41,8 +41,7 @@ def parse_lat_lon(value: Any) -> Optional[float]:
         return None
 
 def parse_hp(value: Any) -> Optional[float]:
-    result = to_float_nullable(value)
-    return result if result is not None else result.mean()
+    return to_float_nullable(value)
 
 def parse_country(value: Any) -> str:
     if _is_invalid_string(value):
