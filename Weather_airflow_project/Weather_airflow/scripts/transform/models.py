@@ -35,10 +35,15 @@ class DimCyclone(BaseTransform):
     __tablename__ = "dim_cyclone"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="Khóa chính định danh cơn bão")
+    sys_id = Column(Integer, nullable=True, comment="ID hệ thống")
     name = Column(String(100), nullable=True, comment="Tên cơn bão")
+    storm_id = Column(String(50), nullable=True, comment="Mã bão")
     intensity = Column(String(50), nullable=True, comment="Cường độ bão")
     start_time = Column(DateTime, nullable=True, comment="Thời gian bắt đầu")
     latest_time = Column(DateTime, nullable=True, comment="Thời gian cập nhật gần nhất")
+    same = Column(String(255), nullable=True, comment="Thông tin SAME")
+    center_id = Column(Integer, nullable=True, comment="ID trung tâm")
+    gts = Column(String(255), nullable=True, comment="GTS")
     updatedAt = Column(DateTime, nullable=True, comment="Ngày giờ cập nhật bản ghi")
 
     # Relationship tới bảng track (FactCycloneTrack)
@@ -129,7 +134,12 @@ class FactCycloneTrack(BaseTransform):
     gust = Column(Numeric(10, 2), nullable=True)
     speed_of_movement = Column(Numeric(10, 2), nullable=True)
     movement_direction = Column(String(50), nullable=True)
-    wind_radis = Column(Text, nullable=True)
+    wind_threshold_kt = Column(Numeric(10, 2), nullable=True)
+    NEQ_nm = Column(Numeric(10, 2), nullable=True)
+    SEQ_nm = Column(Numeric(10, 2), nullable=True)
+    SWQ_nm = Column(Numeric(10, 2), nullable=True)
+    NWQ_nm = Column(Numeric(10, 2), nullable=True)
+    wind_radii = Column(Text, nullable=True)
     center_id = Column(String(50), nullable=True)
     createdAt = Column(DateTime, nullable=True)
 

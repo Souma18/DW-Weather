@@ -65,7 +65,6 @@ class TCForecast(BaseClean):
     SWQ_nm = Column(Float)
     NWQ_nm = Column(Float)
     forecast_time = Column(DateTime)
-
 class TCTrack(BaseClean):
     __tablename__ = "tc_track"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -86,7 +85,6 @@ class TCTrack(BaseClean):
     SWQ_nm = Column(Float)
     NWQ_nm = Column(Float)
     center_id = Column(Integer)
-
 class TC(BaseClean):
     __tablename__ = "tc"
     id = Column(Integer, primary_key=True, autoincrement=True)
