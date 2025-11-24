@@ -14,7 +14,6 @@ class DimLocation(BaseTransform):
     station = Column(String(200), nullable=True, comment="Tên trạm hoặc địa điểm đo")
     lat = Column(Numeric(10, 6), nullable=True, comment="Vĩ độ")
     lon = Column(Numeric(10, 6), nullable=True, comment="Kinh độ")
-    hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
     country = Column(String(100), nullable=True, comment="Quốc gia")
     createdAt = Column(DateTime, nullable=True)
 
@@ -41,10 +40,7 @@ class DimCyclone(BaseTransform):
     intensity = Column(String(50), nullable=True, comment="Cường độ bão")
     start_time = Column(DateTime, nullable=True, comment="Thời gian bắt đầu")
     latest_time = Column(DateTime, nullable=True, comment="Thời gian cập nhật gần nhất")
-    same = Column(String(255), nullable=True, comment="Thông tin SAME")
-    center_id = Column(Integer, nullable=True, comment="ID trung tâm")
-    gts = Column(String(255), nullable=True, comment="GTS")
-    updatedAt = Column(DateTime, nullable=True, comment="Ngày giờ cập nhật bản ghi")
+    updatedAt = Column(DateTime, nullable=True, comment="Ngày cập nhật bảng ghi")
 
     # Relationship tới bảng track (FactCycloneTrack)
     tracks = relationship("FactCycloneTrack", back_populates="cyclone", cascade="all, delete-orphan")
@@ -60,10 +56,11 @@ class FactHeavyRain(BaseTransform):
     __tablename__ = "fact_heavy_rain"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True)
-    event_datetime = Column(DateTime, nullable=False)
-    rainfall_mm = Column(Numeric(10, 2), nullable=True)
-    createdAt = Column(DateTime, nullable=True)
+    location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True, comment="ID tham chiếu tới bảng DimLocation")
+    hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
+    event_datetime = Column(DateTime, nullable=False, comment="Thời gian xảy ra sự kiện")
+    rainfall_mm = Column(Numeric(10, 2), nullable=True, comment="Lượng mưa (mm)")
+    createdAt = Column(DateTime, nullable=True, comment="Thời gian tạo bản ghi")
 
     location = relationship("DimLocation", back_populates="heavy_rains")
 
@@ -75,10 +72,11 @@ class FactThunderstorm(BaseTransform):
     __tablename__ = "fact_thunderstorm"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True)
-    event_datetime = Column(DateTime, nullable=False)
-    thunderstorms_index = Column(Numeric(10, 2), nullable=True)
-    createdAt = Column(DateTime, nullable=True)
+    location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True, comment="ID tham chiếu tới bảng DimLocation")
+    hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
+    event_datetime = Column(DateTime, nullable=False, comment="Thời gian xảy ra sự kiện")
+    thunderstorms_index = Column(Numeric(10, 2), nullable=True, comment="Chỉ số dông bão")
+    createdAt = Column(DateTime, nullable=True, comment="Thời gian tạo bản ghi")
 
     location = relationship("DimLocation", back_populates="thunderstorms")
 
@@ -90,11 +88,12 @@ class FactFog(BaseTransform):
     __tablename__ = "fact_fog"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True)
-    event_datetime = Column(DateTime, nullable=False)
-    fog_index = Column(String(50), nullable=True)
-    visibility = Column(String(50), nullable=True)
-    createdAt = Column(DateTime, nullable=True)
+    location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True, comment="ID tham chiếu tới bảng DimLocation")
+    hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
+    event_datetime = Column(DateTime, nullable=False, comment="Thời gian xảy ra sự kiện")
+    fog_index = Column(String(50), nullable=True, comment="Chỉ số sương mù")
+    visibility = Column(Integer, nullable=True, comment="Tầm nhìn xa")
+    createdAt = Column(DateTime, nullable=True, comment="Thời gian tạo bản ghi")
 
     location = relationship("DimLocation", back_populates="fogs")
 
@@ -106,13 +105,14 @@ class FactGale(BaseTransform):
     __tablename__ = "fact_gale"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True)
-    event_datetime = Column(DateTime, nullable=False)
-    knots = Column(Numeric(10, 2), nullable=True)
-    ms = Column(Numeric(10, 2), nullable=True)
-    degrees = Column(Integer, nullable=True)
-    direction = Column(String(50), nullable=True)
-    createdAt = Column(DateTime, nullable=True)
+    location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True, comment="ID tham chiếu tới bảng DimLocation")
+    hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
+    event_datetime = Column(DateTime, nullable=False, comment="Thời gian xảy ra sự kiện")
+    knots = Column(Numeric(10, 2), nullable=True, comment="Tốc độ gió (knots)")
+    ms = Column(Numeric(10, 2), nullable=True, comment="Tốc độ gió (m/s)")
+    degrees = Column(Integer, nullable=True, comment="Hướng gió (độ)")
+    direction = Column(String(50), nullable=True, comment="Hướng gió (chữ)")
+    createdAt = Column(DateTime, nullable=True, comment="Thời gian tạo bản ghi")
 
     location = relationship("DimLocation", back_populates="gales")
 
@@ -124,24 +124,22 @@ class FactCycloneTrack(BaseTransform):
     __tablename__ = "fact_cyclone_track"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    cyclone_id = Column(Integer, ForeignKey("dim_cyclone.id"), nullable=False, index=True)
-    event_datetime = Column(DateTime, nullable=False)
-    lat = Column(Numeric(10, 6), nullable=True)
-    lon = Column(Numeric(10, 6), nullable=True)
-    intensity = Column(String(50), nullable=True)
-    pressure = Column(Numeric(10, 2), nullable=True)
-    max_wind_speed = Column(Numeric(10, 2), nullable=True)
-    gust = Column(Numeric(10, 2), nullable=True)
-    speed_of_movement = Column(Numeric(10, 2), nullable=True)
-    movement_direction = Column(String(50), nullable=True)
-    wind_threshold_kt = Column(Numeric(10, 2), nullable=True)
-    NEQ_nm = Column(Numeric(10, 2), nullable=True)
-    SEQ_nm = Column(Numeric(10, 2), nullable=True)
-    SWQ_nm = Column(Numeric(10, 2), nullable=True)
-    NWQ_nm = Column(Numeric(10, 2), nullable=True)
-    wind_radii = Column(Text, nullable=True)
-    center_id = Column(String(50), nullable=True)
-    createdAt = Column(DateTime, nullable=True)
+    cyclone_id = Column(Integer, ForeignKey("dim_cyclone.id"), nullable=False, index=True, comment="ID tham chiếu tới bảng DimCyclone")
+    center_id = Column(Integer, nullable=True, comment="ID trung tâm dự báo")
+    analysis_time = Column(DateTime, nullable=False, comment="Thời gian phân tích/dự báo")
+    lat = Column(Numeric(10, 6), nullable=True, comment="Vĩ độ")
+    lon = Column(Numeric(10, 6), nullable=True, comment="Kinh độ")
+    speed_of_movement = Column(Numeric(10, 2), nullable=True, comment="Tốc độ di chuyển của bão")    
+    movement_direction = Column(String(50), nullable=True, comment="Hướng di chuyển của bão")
+    pressure = Column(Numeric(10, 2), nullable=True, comment="Áp suất tại tâm bão")
+    max_wind_speed = Column(Numeric(10, 2), nullable=True, comment="Tốc độ gió tối đa")
+    gust = Column(Numeric(10, 2), nullable=True, comment="Gió giật")
+    wind_threshold_kt = Column(Numeric(10, 2), nullable=True, comment="Ngưỡng gió (knots)")
+    NEQ_nm = Column(Numeric(10, 2), nullable=True, comment="Bán kính gió hướng Đông Bắc (nm)")
+    SEQ_nm = Column(Numeric(10, 2), nullable=True, comment="Bán kính gió hướng Đông Nam (nm)")
+    SWQ_nm = Column(Numeric(10, 2), nullable=True, comment="Bán kính gió hướng Tây Nam (nm)")
+    NWQ_nm = Column(Numeric(10, 2), nullable=True, comment="Bán kính gió hướng Tây Bắc (nm)")
+    createdAt = Column(DateTime, nullable=True, comment="Thời gian tạo bản ghi")
 
     cyclone = relationship("DimCyclone", back_populates="tracks")
 

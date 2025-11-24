@@ -14,7 +14,7 @@ from load.load_to_bigquery import WeatherLoadToBigQuery
 from extract.extractor import run
 from transform.transform import run_transform
 def main() -> None:
-    process_etl()
+    run_transform()
 
 
 if __name__ == "__main__":
