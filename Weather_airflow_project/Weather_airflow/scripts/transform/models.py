@@ -145,4 +145,3 @@ class FactCycloneTrack(BaseTransform):
 
     def __repr__(self):
         return f"<FactCycloneTrack(id={self.id}, cyclone_id={self.cyclone_id})>"
-
