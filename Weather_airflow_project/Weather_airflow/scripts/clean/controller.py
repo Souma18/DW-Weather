@@ -1,6 +1,7 @@
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Any
 
 import pandas as pd
@@ -10,8 +11,10 @@ from elt_metadata.models import LogExtractEvent, CleanLog
 
 # Clean functions and ORM models (3-file layout)
 from clean.clean_functions import CLEAN_FUNCTIONS
+from utils.file_utils import get_data_dir
 
-RAW_DIR = os.getenv("RAW_DIR", r"data\\raw")
+# Thư mục raw: <DATA_DIR>/raw (mặc định /opt/airflow/data/raw trong Docker)
+RAW_DIR = Path(os.getenv("RAW_DIR", get_data_dir() / "raw"))
 RECIEVER_EMAIL = os.getenv("RECIEVER_EMAIL")
 
 
@@ -83,11 +86,12 @@ def process_raw_df_to_models(data_type: str, raw_df: pd.DataFrame) -> List[Any]:
 # -----------------------
 def get_all_raw_files() -> List[tuple]:
     """Danh sách tất cả file CSV trong RAW_DIR và các folder con"""
-    all_files = []
+    all_files: list[tuple[Path, str]] = []
     for root, _, files in os.walk(RAW_DIR):
+        root_path = Path(root)
         for f in files:
             if f.lower().endswith(".csv"):
-                all_files.append((os.path.join(root, f), f))
+                all_files.append((root_path / f, f))
     return all_files
 
 

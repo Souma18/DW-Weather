@@ -7,7 +7,8 @@ from airflow.operators.python import PythonOperator
 
 
 # Thiết lập PYTHONPATH để import được các module trong thư mục scripts
-PROJECT_ROOT = Path(__file__).resolve().parents[1]  # Weather_airflow
+# /opt/airflow/Weather_airflow/scripts sẽ chứa các package: database, extract, clean, transform, ...
+PROJECT_ROOT = Path(__file__).resolve().parents[1]  # Thư mục Weather_airflow
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.append(str(SCRIPTS_DIR))
@@ -27,7 +28,7 @@ with DAG(
     description="Extract JSON weather data to CSV (with logging)",
     default_args=default_args,
     start_date=datetime(2025, 11, 24, 1, 0),
-    schedule_interval="0 1 * * *",  # Hằng ngày lúc 01:00
+    schedule_interval="30 13 * * *",  # Hằng ngày lúc 01:00
     catchup=False,
     tags=["weather", "extract"],
 ) as dag:

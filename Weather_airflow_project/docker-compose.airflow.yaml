@@ -1,0 +1,68 @@
+version: '3.9'
+
+services:
+  airflow_webserver:
+    build: .
+    image: weather_airflow:latest
+    container_name: airflow_webserver
+    restart: always
+    depends_on:
+      - airflow_scheduler
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: >
+        mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/airflow_db
+
+      # Thông tin tài khoản đăng nhập UI Airflow (lấy từ .env)
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USERNAME}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      _AIRFLOW_WWW_USER_FIRSTNAME: ${AIRFLOW_ADMIN_FIRSTNAME}
+      _AIRFLOW_WWW_USER_LASTNAME: ${AIRFLOW_ADMIN_LASTNAME}
+      _AIRFLOW_WWW_USER_EMAIL: ${AIRFLOW_ADMIN_EMAIL}
+
+      # Biến môi trường cho job ETL (email, v.v.)
+      DATA_DIR: /opt/airflow/data
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD}
+      RECIEVER_EMAIL: ${RECIEVER_EMAIL}
+    volumes:
+      - ./Weather_airflow/dags:/opt/airflow/dags
+      - ./Weather_airflow/scripts:/opt/airflow/scripts
+      - ./data:/opt/airflow/data
+    ports:
+      - "8080:8080"
+    command: >
+       bash -c "airflow db migrate &&
+               airflow users create
+                 --username \$${_AIRFLOW_WWW_USER_USERNAME}
+                 --password \$${_AIRFLOW_WWW_USER_PASSWORD}
+                 --firstname \$${_AIRFLOW_WWW_USER_FIRSTNAME}
+                 --lastname \$${_AIRFLOW_WWW_USER_LASTNAME}
+                 --role Admin
+                 --email \$${_AIRFLOW_WWW_USER_EMAIL} || true &&
+               exec airflow webserver"
+    networks:
+      - weather_net
+
+  airflow_scheduler:
+    build: .
+    image: weather_airflow:latest
+    container_name: airflow_scheduler
+    restart: always
+    environment:
+      DATA_DIR: /opt/airflow/data
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: >
+        mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/airflow_db
+    volumes:
+      - ./Weather_airflow/dags:/opt/airflow/dags
+      - ./Weather_airflow/scripts:/opt/airflow/scripts
+      - ./data:/opt/airflow/data
+    command: "airflow scheduler"
+    networks:
+      - weather_net
+
+networks:
+  weather_net:
+    external: true

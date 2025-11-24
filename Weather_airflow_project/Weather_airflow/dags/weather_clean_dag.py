@@ -7,7 +7,7 @@ from airflow.operators.python import PythonOperator
 
 
 # Thiết lập PYTHONPATH để import được các module trong thư mục scripts
-PROJECT_ROOT = Path(__file__).resolve().parents[1]  # Weather_airflow
+PROJECT_ROOT = Path(__file__).resolve().parents[1]  # Thư mục Weather_airflow
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.append(str(SCRIPTS_DIR))
@@ -27,7 +27,7 @@ with DAG(
     description="Clean raw CSV weather data into staging tables",
     default_args=default_args,
     start_date=datetime(2025, 11, 24, 1, 30),
-    schedule_interval="30 1 * * *",  # Hằng ngày lúc 01:30 (sau extract)
+    schedule_interval="35 13 * * *",  # Hằng ngày lúc 01:30 (sau extract)
     catchup=False,
     tags=["weather", "clean"],
 ) as dag:

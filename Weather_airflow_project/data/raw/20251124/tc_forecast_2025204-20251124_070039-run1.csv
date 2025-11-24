@@ -1,0 +1,8 @@
+time_interval,intensity,lat,lng,speed_of_movement,movement_direction,pressure,max_wind_speed,gust,wind_radii,forecast_time
+0600,category 4,-13.980000000,127.860000000,,,953,90,125,34.0 kt;;40nm|NEQ;;45nm|SEQ;;50nm|SWQ;;50nm|NWQ##48.0 kt;;20nm|NEQ;;40nm|SEQ;;40nm|SWQ;;30nm|NWQ##64.0 kt;;15nm|NEQ;;20nm|SEQ;;25nm|SWQ;;20nm|NWQ,
+1200,category 3,-14.060000000,127.520000000,,,971,70,100,34.0 kt;;40nm|NEQ;;45nm|SEQ;;45nm|SWQ;;50nm|NWQ##48.0 kt;;20nm|NEQ;;30nm|SEQ;;25nm|SWQ;;20nm|NWQ##64.0 kt;;15nm|NEQ;;20nm|SEQ;;15nm|SWQ;;15nm|NWQ,
+1800,category 2,-14.050000000,127.250000000,,,986,50,70,34.0 kt;;40nm|NEQ;;35nm|SEQ;;35nm|SWQ;;40nm|NWQ##48.0 kt;;15nm|NEQ;;25nm|SEQ;;15nm|SWQ;;15nm|NWQ,
+2400,,-14.060000000,127.020000000,,,998,30,45,,
+3600,,-14.260000000,126.690000000,,,1000,25,45,,
+4800,,-14.520000000,126.400000000,,,1000,25,45,,
+6000,,-15.200000000,126.480000000,,,1003,20,45,,
