@@ -15,7 +15,7 @@ class DimLocation(BaseTransform):
     lat = Column(Numeric(10, 6), nullable=True, comment="Vĩ độ")
     lon = Column(Numeric(10, 6), nullable=True, comment="Kinh độ")
     country = Column(String(100), nullable=True, comment="Quốc gia")
-    createdAt = Column(DateTime, nullable=True)
+    createdAt = Column(DateTime, nullable=True, comment="Thời gian tạo bản ghi")
 
     # Relationship tới các bảng fact tham chiếu location
     heavy_rain_snows = relationship("FactHeavyRainSnow", back_populates="location", cascade="all, delete-orphan")
@@ -57,7 +57,7 @@ class FactHeavyRainSnow(BaseTransform):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     location_id = Column(Integer, ForeignKey("dim_location.id"), nullable=False, index=True, comment="ID tham chiếu tới bảng DimLocation")
-    hp = Column(Numeric(10, 2), nullable=True, comment="Độ cao hoặc áp suất (tuỳ dữ liệu)")
+    hp = Column(Numeric(10, 2), nullable=True, comment="Áp suất")
     event_datetime = Column(DateTime, nullable=True, comment="Thời gian xảy ra sự kiện")
     rainfall_mm = Column(Numeric(10, 2), nullable=True, comment="Lượng mưa (mm)")
     createdAt = Column(DateTime, nullable=True, comment="Thời gian tạo bản ghi")
