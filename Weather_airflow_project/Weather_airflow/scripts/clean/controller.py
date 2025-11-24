@@ -32,21 +32,31 @@ def get_base_type(filename: str) -> str:
 # -----------------------
 # Data Cleaning
 # -----------------------
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 def process_raw_df_to_models(data_type: str, raw_df: pd.DataFrame) -> List[Any]:
-    """
-    Process raw DataFrame:
-    1. Normalize column names
-    2. Drop duplicates
-    3. Apply cleaner function to each row -> returns Model Instance
-    4. Collect valid instances
-    """
-    # 1. Normalize column names
     raw_df.columns = [normalize_col_name(c) for c in raw_df.columns]
-    
-    # 2. Drop duplicates on raw data first
-    # Note: This drops exact duplicate rows in the raw CSV
     raw_df = raw_df.drop_duplicates()
 
+    # Tính mean_hp
+    mean_hp = 0.0
+    if "hp" in raw_df.columns:
+        numeric_hp = pd.to_numeric(raw_df["hp"], errors="coerce")
+        mean_hp = numeric_hp.dropna().mean() or 0.0
+        logging.info(f"File has {len(raw_df)} rows, {numeric_hp.notna().sum()} valid 'hp' values, mean_hp={mean_hp}")
+
+    # Monkey-patch parse_hp
+    import clean.clean_functions as cleaners
+    original_parse_hp = cleaners.parse_hp
+    def parse_hp_with_default(value: Any) -> float:
+        from clean.clean_functions import to_float_nullable
+        result = to_float_nullable(value)
+        return result if result is not None else mean_hp
+    cleaners.parse_hp = parse_hp_with_default
+
+    # Apply cleaner
     cleaner = CLEAN_FUNCTIONS.get(data_type)
     if not cleaner:
         return []
@@ -54,15 +64,18 @@ def process_raw_df_to_models(data_type: str, raw_df: pd.DataFrame) -> List[Any]:
     valid_instances = []
     for _, row in raw_df.iterrows():
         try:
-            # 3. Apply cleaner function
-            # cleaner now returns a Model Instance (e.g., Fog(...)) or None
             instance = cleaner(row.to_dict())
             if instance:
                 valid_instances.append(instance)
         except Exception:
             continue
 
+    # Restore parse_hp
+    cleaners.parse_hp = original_parse_hp
+
     return valid_instances
+
+
 
 
 # -----------------------

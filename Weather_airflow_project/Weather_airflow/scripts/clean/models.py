@@ -36,7 +36,6 @@ class HeavyRain(BaseClean):
     hp = Column(Float)
     country = Column(String(255))
     hvyrain = Column(Float)
-    datetime = Column(DateTime)
 
 class Thunderstorms(BaseClean):
     __tablename__ = "thunderstorms"
@@ -49,22 +48,6 @@ class Thunderstorms(BaseClean):
     thunderstorms = Column(Integer)
     datetime = Column(DateTime)
 
-class TCForecast(BaseClean):
-    __tablename__ = "tc_forecast"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    time_interval = Column(Integer)
-    lat = Column(Float)
-    lng = Column(Float)
-    pressure = Column(Float)
-    max_wind_speed = Column(Float)
-    gust = Column(Float)
-    intensity_category = Column(Integer)
-    wind_threshold_kt = Column(Float)
-    NEQ_nm = Column(Float)
-    SEQ_nm = Column(Float)
-    SWQ_nm = Column(Float)
-    NWQ_nm = Column(Float)
-    forecast_time = Column(DateTime)
 class TCTrack(BaseClean):
     __tablename__ = "tc_track"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -78,7 +61,6 @@ class TCTrack(BaseClean):
     pressure = Column(Float)
     max_wind_speed = Column(Float)
     gust = Column(Float)
-    intensity_category = Column(Integer)
     wind_threshold_kt = Column(Float)
     NEQ_nm = Column(Float)
     SEQ_nm = Column(Float)
@@ -92,9 +74,7 @@ class TC(BaseClean):
     name = Column(String(255))
     storm_id = Column(String(50))
     intensity = Column(String(50))
-    intensity_category = Column(Integer)
     start = Column(DateTime)
     latest = Column(DateTime)
-    same = Column(String(255))
     centerid = Column(Integer)
     gts = Column(String(255))
