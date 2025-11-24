@@ -12,6 +12,8 @@ from clean.models import Fog, Gale, HeavyRain, Thunderstorms, TCTrack, TC
 import csv
 from clean.clean_functions import CLEAN_FUNCTIONS
 from elt_metadata.models import  CleanLog
+from service.email_service import send_email
+from database.logger import log_dual_status
 
 def get_success_logs():
     with session_scope(SessionELT) as session:
@@ -91,7 +93,8 @@ def run_clean_and_insert_all():
 
         clean_fn = CLEAN_FUNCTIONS.get(data_type)
         if not clean_fn:
-            print(f"[ERROR] Không có hàm clean cho {data_type}")
+            # print(f"[ERROR] Không có hàm clean cho {data_type}")
+            log_dual_status(clean_log, SessionELT, "danhphnha@gmail.com","Lỗi hệ thống DW-Weather","Không có hàm clean cho {data_type}")
             continue 
 
         Model = get_model_by_data_type(data_type)
@@ -102,11 +105,8 @@ def run_clean_and_insert_all():
         try:
             rows = parse_file(file_path)
         except Exception as e:
-            print(f"[ERROR] Không đọc được file: {e}")
-
             # LOG lỗi đọc file
-            with session_scope(SessionELT) as session:
-                clean_log = CleanLog(
+            clean_log = CleanLog(
                     file_name=os.path.basename(file_path),
                     status="FAILED",
                     total_rows=0,
@@ -117,7 +117,9 @@ def run_clean_and_insert_all():
                     fail_range=None,
                     table_type=data_type
                 )
-                session.add(clean_log)
+            
+            # Gửi email thông báo lỗi đọc file
+            log_dual_status(clean_log, SessionELT, "danhphnha@gmail.com","Lỗi hệ thống DW-Weather.", "Lỗi khi đọc file: {file_path}")
             continue
 
         headers = rows[0]
@@ -155,8 +157,7 @@ def run_clean_and_insert_all():
             print(f"[DB ERROR] Lỗi insert data_clean: {e}")
 
             # LOG lỗi DB
-            with session_scope(SessionELT) as session:
-                clean_log = CleanLog(
+            clean_log = CleanLog(
                     file_name=os.path.basename(file_path),
                     status="FAILED",
                     total_rows=total_rows,
@@ -167,7 +168,9 @@ def run_clean_and_insert_all():
                     fail_range="0-" + str(total_rows),
                     table_type=data_type
                 )
-                session.add(clean_log)
+
+            # Gửi email thông báo lỗi DB
+            log_dual_status(clean_log, SessionELT, "danhphnha@gmail.com","Lỗi hệ thống DW-Weather","Lỗi insert db vào data_clean")
             continue
 
         # Ghi CLEAN SUCCESS LOG + cập nhật LogExtractEvent
@@ -195,9 +198,9 @@ def run_clean_and_insert_all():
                     fail_range=fail_range,
                     table_type=data_type
                 )
-                session.add(clean_log)
-
                 print(f"[LOG] Updated LogExtractEvent + CleanLog saved")
 
         except Exception as e:
-            print(f"[LOG ERROR] Không update được log: {e}")
+            # print(f"[LOG ERROR] Không update được log: {e}")
+            log_dual_status(clean_log, SessionELT, "danhphnha@gmail.com","Lỗi hệ thống DW-Weather","Không update được log: {e}")
+
