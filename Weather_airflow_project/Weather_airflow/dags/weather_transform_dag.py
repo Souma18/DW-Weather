@@ -27,7 +27,7 @@ with DAG(
     description="Transform clean staging data into Dim/Fact tables",
     default_args=default_args,
     start_date=datetime(2025, 11, 24, 2, 0),
-    schedule_interval="40 13 * * *",  # Hằng ngày lúc 02:00 (sau clean)
+    schedule_interval="30 7 * * *",  # Hằng ngày lúc 02:00 (sau clean)
     catchup=False,
     tags=["weather", "transform"],
 ) as dag:

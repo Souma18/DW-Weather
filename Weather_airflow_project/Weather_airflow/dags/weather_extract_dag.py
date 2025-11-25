@@ -6,6 +6,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 
+ # 1.0.0: Khởi chạy dag extract để lấy dữ liệu thời tiết từ JSON và lưu thành CSV vào lúc 6:30 hàng ngày
 # Thiết lập PYTHONPATH để import được các module trong thư mục scripts
 # /opt/airflow/Weather_airflow/scripts sẽ chứa các package: database, extract, clean, transform, ...
 PROJECT_ROOT = Path(__file__).resolve().parents[1]  # Thư mục Weather_airflow
@@ -29,7 +30,7 @@ with DAG(
     description="Extract JSON weather data to CSV (with logging)",
     default_args=default_args,
     start_date=datetime(2025, 11, 24, 1, 0),
-    schedule_interval="30 13 * * *",  # 1.0.2: Trigger mỗi ngày lúc 13:30
+    schedule_interval="30 6 * * *",  # 1.0.2: Trigger mỗi ngày lúc 13:30
     catchup=False,
     tags=["weather", "extract"],
 ) as dag:

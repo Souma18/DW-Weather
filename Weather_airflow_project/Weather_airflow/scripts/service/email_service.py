@@ -20,7 +20,8 @@ def send_email(to_email: str, subject: str, content: str, html: bool = True):
         else:
             msg.attach(MIMEText(content, "plain", "utf-8"))
         # Kết nối SMTP server và gửi email
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 587) as server:
+            server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
         return True

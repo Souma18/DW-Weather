@@ -6,6 +6,7 @@ services:
     container_name: mysql_etl_staging
     restart: always
     environment:
+      TZ: Asia/Ho_Chi_Minh
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} # mật khẩu root
       MYSQL_USER: ${MYSQL_USER}                   # user cho ETL
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}           # mật khẩu của user

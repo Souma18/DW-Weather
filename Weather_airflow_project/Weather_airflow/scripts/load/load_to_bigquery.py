@@ -11,7 +11,6 @@ from google.oauth2 import service_account
 from sqlalchemy import select, func, MetaData, Integer, String, Numeric, DateTime, Text
 from sqlalchemy.exc import SQLAlchemyError, NoSuchTableError
 
-# Local imports
 from database.setup_db import setup_database
 from etl_metadata.models import MappingInfo, LoadLog
 from transform.models import (
@@ -22,7 +21,6 @@ from transform.models import (
 from database.base import session_scope
 from service.email_service import send_email
 
-# ============================= CONFIG & LOGGING =============================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(message)s",
@@ -31,8 +29,6 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 ALERT_EMAIL = os.getenv("ALERT_EMAIL") or "caominhhieunq@gmail.com"
 
-
-# ============================= CONSTANTS =============================
 PROJECT_ID = "datawarehouse-478311"
 DATASET_ID = "dataset_weather"
 
@@ -46,10 +42,8 @@ TABLE_TO_MODEL = {
     "fact_cyclone_track": FactCycloneTrack,
 }
 
-# ============================= MAIN CLASS =============================
 class WeatherLoadToBigQuery:
     def __init__(self):
-        # BigQuery
         key_path = os.path.join(os.path.dirname(__file__), "bigquery-key.json")
         if not os.path.exists(key_path):
             raise FileNotFoundError(f"Không tìm thấy bigquery-key.json tại: {key_path}")
@@ -58,22 +52,18 @@ class WeatherLoadToBigQuery:
         self.bq = bigquery.Client(credentials=creds, project=PROJECT_ID)
         self._ensure_dataset()
 
-        # DB connections
-        # 1. Transform DB (Staging)
         self.staging_engine, _ = setup_database(
             "transform_db_url",
             lambda: log.error("Không thể kết nối đến Transform DB"),
             echo=False
         )
         
-        # 2. ELT Metadata DB (Logging)
         _, self.MetaSession = setup_database(
             "elt_db_url",
             lambda: log.error("Không thể kết nối đến ELT Metadata DB"),
             echo=False
         )
 
-        # Reflect schema từ MySQL staging
         self.metadata = MetaData()
         self.metadata.reflect(bind=self.staging_engine)
         log.info(f"Reflect {len(self.metadata.tables)} bảng từ db_stage_transform")
@@ -88,7 +78,6 @@ class WeatherLoadToBigQuery:
             self.bq.create_dataset(dataset)
             log.info(f"Tạo dataset mới: {DATASET_ID}")
 
-    # --------------------- Schema & Data ---------------------
     def generate_bq_schema(self, table_name: str) -> List[bigquery.SchemaField]:
         model = TABLE_TO_MODEL[table_name]
         fields = []
@@ -178,7 +167,6 @@ class WeatherLoadToBigQuery:
             for row in rows
         ]
 
-    # --------------------- Load & Log ---------------------
     def load_to_bq(self, rows: List[Dict], target_table: str, load_type: str) -> bool:
         if not rows:
             return True
@@ -225,7 +213,6 @@ class WeatherLoadToBigQuery:
     ):
         end = datetime.datetime.now(datetime.timezone.utc)
 
-        # Ghi log vào DB
         with session_scope(self.MetaSession) as s:
             s.add(
                 LoadLog(
@@ -239,14 +226,12 @@ class WeatherLoadToBigQuery:
                 )
             )
 
-        # In console
         color = "\033[92m" if status == "SUCCESS" else "\033[91m"
         icon = "THÀNH CÔNG" if status == "SUCCESS" else "THẤT BẠI"
         print(
             f"{color}[{icon}]\033[0m {dst.ljust(28)} | {count:>8,} bản ghi | {msg}"
         )
 
-        # Gửi email nếu FAIL
         if status == "FAILED" and ALERT_EMAIL:
             subject = f"[Weather ETL] LOAD FAILED - {dst}"
             content = f"""
@@ -260,7 +245,6 @@ End         : {end}
 Chi tiết: {msg}
             """.strip()
             try:
-                # Gửi email dạng text thường, không HTML template
                 send_email(ALERT_EMAIL, subject, content, html=False)
             except Exception as e:
                 log.error(f"Gửi email thất bại: {e}")
@@ -275,7 +259,6 @@ Chi tiết: {msg}
         log.info(f"→ {src} → {dst} [{load_type}]")
 
         try:
-            # 1. Bảng không tồn tại trong metadata (schema)
             if src not in self.metadata.tables:
                 self.log(
                     "FAILED",
@@ -289,7 +272,6 @@ Chi tiết: {msg}
 
             table_obj = self.metadata.tables[src]
 
-            # 2. Đếm bản ghi
             with self.staging_engine.connect() as conn:
                 count = (
                     conn.execute(
@@ -297,7 +279,6 @@ Chi tiết: {msg}
                     ).scalar()
                 )
 
-            # 3. Bảng rỗng bất thường
             if count == 0:
                 if self.has_previous_success_with_data(src):
                     self.log(
@@ -312,7 +293,6 @@ Chi tiết: {msg}
                 self.log("SUCCESS", src, dst, 0, start, "Bảng rỗng (chưa có dữ liệu)")
                 return True
 
-            # 4. Incremental
             since = (
                 self.get_last_load_ts(src)
                 if load_type == "incremental" and ts_col
@@ -323,7 +303,6 @@ Chi tiết: {msg}
                 self.log("SUCCESS", src, dst, 0, start, "Không có dữ liệu mới")
                 return True
 
-            # 5. Load lên BigQuery
             transformed = self.transform_rows(data)
             success = self.load_to_bq(transformed, dst, load_type)
 
@@ -333,7 +312,6 @@ Chi tiết: {msg}
             return success
 
         except (NoSuchTableError, SQLAlchemyError) as e:
-            # Lỗi DB (ví dụ xóa bảng MySQL giữa chừng)
             self.log(
                 "FAILED",
                 src,
@@ -344,7 +322,6 @@ Chi tiết: {msg}
             )
             return False
         except Exception as e:
-            # Lỗi không mong đợi khác
             self.log(
                 "FAILED",
                 src,
@@ -355,7 +332,6 @@ Chi tiết: {msg}
             )
             return False
 
-    # --------------------- Run ---------------------
     def run(self):
         print("\n" + "=" * 88)
         print("     WEATHER → BIGQUERY ETL - BẮT ĐẦU CHẠY")
@@ -374,7 +350,6 @@ Chi tiết: {msg}
         print(f"  TỔNG: {len(mappings)} bảng | THÀNH CÔNG: {success} | THẤT BẠI: {failed}")
         print("=" * 88 + "\n")
 
-        # Nếu có bảng FAILED thì gửi mail tổng
         if failed and ALERT_EMAIL:
             content = (
                 f"Tổng: {len(mappings)} bảng\n"
