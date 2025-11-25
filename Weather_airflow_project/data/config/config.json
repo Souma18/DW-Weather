@@ -1,7 +1,7 @@
 {
     "db_url": {
-      "elt_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql:3306/db_etl_metadata",
-      "clean_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql:3306/db_stage_clean",
-      "transform_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql:3306/db_stage_transform"
+      "elt_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql_etl_staging:3306/db_etl_metadata",
+      "clean_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql_etl_staging:3306/db_stage_clean",
+      "transform_db_url": "mysql+mysqlconnector://etl_user:etl_password@mysql_etl_staging:3306/db_stage_transform"
     }
   }

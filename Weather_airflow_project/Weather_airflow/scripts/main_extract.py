@@ -1,7 +1,4 @@
 
-
-from dotenv import load_dotenv
-load_dotenv( ".env")
 from extract.extractor import run
 def main() -> None:
     run()

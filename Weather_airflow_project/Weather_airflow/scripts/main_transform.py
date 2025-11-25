@@ -1,6 +1,3 @@
-
-from dotenv import load_dotenv
-load_dotenv(".env")
 from transform.transform import run_transform
 def main() -> None:
     run_transform()
