@@ -14,10 +14,11 @@ from urllib.parse import urlparse
 import re
 from database.base import session_scope
 from extract.setup_db import SessionELT
-from database.logger import log_dual_status
+from database.logger import DEFAULT_RECIEVER_EMAIL
 from extract.log_service import LogService
 from sqlalchemy import func
-from etl_metadata.models import LogExtractRun, TransformLog
+from etl_metadata.models import LogExtractRun
+from service.email_service import send_email
 
 # Xác định thư mục gốc project và thư mục data dùng chung
 # - Mặc định: <project_root>/data
@@ -41,6 +42,21 @@ TYPE_ABBREVIATIONS = {
     "fog": "fog",
 }
 
+
+def _send_extract_email(subject: str, content: str, to_email: str | None = None) -> None:
+    """
+    Gửi email thông báo cho job extract.
+
+    - Sử dụng DEFAULT_RECIEVER_EMAIL nếu không truyền to_email
+    - Không ghi log vào bảng transform_log (tránh lẫn với job transform)
+    """
+    if to_email is None:
+        to_email = DEFAULT_RECIEVER_EMAIL
+    try:
+        send_email(to_email, subject, content)
+    except Exception as e:
+        # Không để việc gửi email làm crash job, chỉ in ra console
+        print(f"Lỗi khi gửi email thông báo extract: {e}")
 
 def build_error_info(exc: Exception) -> tuple[str, str]:
     """
@@ -460,84 +476,29 @@ def extract_jsons_to_csv(
 
 def run(links_file_path: str = None, output_dir: str = None) -> None:
     """
-    Hàm chính để chạy extract JSON -> CSV, kèm ghi log vào DB.
+    1.2 (EXTRACT) - Hàm chính của flow Extract:
+        - Mở session metadata
+        - Tạo run log
+        - Load danh sách links
+        - Extract JSON -> CSV + ghi event
+        - Tổng kết run + gửi email
     """
     print("=" * 60)
     print("BẮT ĐẦU EXTRACT DỮ LIỆU TỪ JSON SANG CSV (VỚI LOGGING)")
     print("=" * 60)
+
+    # 1.2.1 - Mở session tới DB metadata, chuẩn bị LogService cho toàn bộ run
     with session_scope(SessionELT) as session:
         log = LogService(session)
         run_entry = None  # tránh UnboundLocalError trong khối except
 
         try:
-            # Bước 1: Load danh sách links
-            try:
-                links = load_links_from_file(links_file_path)
-            except FileNotFoundError as e:
-                now = datetime.now()
-                log_obj = TransformLog(
-                    status="Failure",
-                    record_count=0,
-                    source_name=str(links_file_path or "auto-detect links file"),
-                    table_name="extract",
-                    message=f"Không tìm thấy file links: {e}",
-                    start_at=now,
-                    end_at=now,
-                )
-                log_dual_status(
-                    log_obj,
-                    SessionELT,
-                    "ETL Extract: Không đọc được file links",
-                    f"Job extract không thể đọc file links.\nChi tiết: {e}",
-                )
-                return
-            except Exception as e:
-                now = datetime.now()
-                log_obj = TransformLog(
-                    status="Failure",
-                    record_count=0,
-                    source_name=str(links_file_path or "auto-detect links file"),
-                    table_name="extract",
-                    message=f"Lỗi bất ngờ khi load links: {e}",
-                    start_at=now,
-                    end_at=now,
-                )
-                log_dual_status(
-                    log_obj,
-                    SessionELT,
-                    "ETL Extract: Lỗi khi load links",
-                    f"Job extract gặp lỗi khi load links.\nChi tiết: {e}",
-                )
-                return
-
-            if not links:
-                now = datetime.now()
-                log_obj = TransformLog(
-                    status="Failure",
-                    record_count=0,
-                    source_name=str(links_file_path or "auto-detect links file"),
-                    table_name="extract",
-                    message="File links không chứa URL hợp lệ.",
-                    start_at=now,
-                    end_at=now,
-                )
-                log_dual_status(
-                    log_obj,
-                    SessionELT,
-                    "ETL Extract: Không có link hợp lệ",
-                    (
-                        "Job extract không có URL nào để xử lý "
-                        "(file links trống hoặc chỉ chứa comment)."
-                    ),
-                )
-                return
-
-            # Xác định thời điểm và run_number cho lần chạy hiện tại
+            # 1.2.2 - Tính run_number trong ngày và tạo bản ghi LogExtractRun (RUNNING)
             now = datetime.now()
             today = now.date()
             job_name = "extract_json_to_csv"
 
-            # Lấy run_number từ DB log: MAX(run_number) trong ngày hiện tại + 1
+            # 1.2.2.1 - Lấy MAX(run_number) cho ngày hiện tại rồi +1
             max_run = (
                 session.query(func.max(LogExtractRun.run_number))
                 .filter(
@@ -548,7 +509,7 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
             )
             run_number = (max_run or 0) + 1
 
-            # Tạo entry run log (khớp với LogService.create_run)
+            # 1.2.2.2 - Tạo entry run log
             run_entry = log.create_run(
                 job_name=job_name,
                 run_number=run_number,
@@ -557,15 +518,76 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                 created_at=now,
             )
 
-            # Bước 2: Extract JSON -> CSV kèm log events (1 file = 1 event)
+            # 1.3 - Load danh sách links (điểm rẽ nhánh: lỗi file / không có link)
+            try:
+                links = load_links_from_file(links_file_path)
+            except FileNotFoundError as e:
+                # 1.3.A - KẾT THÚC SỚM: Không đọc được file links
+                log.update_run(
+                    run_entry,
+                    status="FAIL",
+                    finished_at=datetime.now(),
+                    total_links=0,
+                    success_count=0,
+                    fail_count=0,
+                )
+                _send_extract_email(
+                    subject="ETL Extract: Không đọc được file links",
+                    content=(
+                        "Job extract không thể đọc file links.\n"
+                        f"Đường dẫn: {links_file_path or 'auto-detect links file'}\n"
+                        f"Chi tiết: {e}"
+                    ),
+                )
+                return
+            except Exception as e:
+                # 1.3.B - KẾT THÚC SỚM: Lỗi bất ngờ khi load links
+                log.update_run(
+                    run_entry,
+                    status="FAIL",
+                    finished_at=datetime.now(),
+                    total_links=0,
+                    success_count=0,
+                    fail_count=0,
+                )
+                _send_extract_email(
+                    subject="ETL Extract: Lỗi khi load links",
+                    content=(
+                        "Job extract gặp lỗi khi load links.\n"
+                        f"Đường dẫn: {links_file_path or 'auto-detect links file'}\n"
+                        f"Chi tiết: {e}"
+                    ),
+                )
+                return
+
+            if not links:
+                # 1.3.C - KẾT THÚC SỚM: Không có URL hợp lệ để xử lý
+                log.update_run(
+                    run_entry,
+                    status="FAIL",
+                    finished_at=datetime.now(),
+                    total_links=0,
+                    success_count=0,
+                    fail_count=0,
+                )
+                _send_extract_email(
+                    subject="ETL Extract: Không có link hợp lệ",
+                    content=(
+                        "Job extract không có URL nào để xử lý "
+                        "(file links trống hoặc chỉ chứa comment).\n"
+                        f"Đường dẫn: {links_file_path or 'auto-detect links file'}"
+                    ),
+                )
+                return
+
+            # 1.4 - Vòng lặp chính: Extract JSON -> CSV + ghi LogExtractEvent cho từng file
             csv_files: list[str] = []
 
             for idx, url in enumerate(links, 1):
-                
                 start_time = datetime.now()
 
                 try:
-                    # Extract 1 URL sang CSV (có thể sinh 0/1/n file)
+                    # 1.4.1 - Extract 1 URL sang CSV (có thể sinh 0/1/n file)
                     files_created = extract_jsons_to_csv(
                         [url],
                         output_dir=output_dir,
@@ -574,12 +596,13 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                     )
                     csv_files.extend(files_created)
 
+                    # 1.4.2 - Tạo event EXTRACTED cho từng file CSV
                     for f in files_created:
                         file_name = Path(f).name
 
                         # Suy ra data_type + sys_id từ tên file
                         stem = Path(f).stem  # vd: tc_track_2025204-20251121_005650-run1
-                        type_part = stem.split("-")[0]   # vd: tc_track_2025204
+                        type_part = stem.split("-")[0]  # vd: tc_track_2025204
                         data_type = type_part or None
                         sys_id = None
                         if type_part.startswith(("tc_track_", "tc_forecast_")):
@@ -596,7 +619,7 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                             # Nếu đếm lỗi, để 0 và không chặn việc ghi log
                             record_count = 0
 
-                        # Tạo event SUCCESS cho từng file (1 file = 1 event)
+                        # 1.4.2.A - Event thành công cho 1 file CSV
                         log.create_event(
                             run=run_entry,
                             step="EXTRACT",
@@ -613,7 +636,7 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                             created_at=datetime.now(),
                         )
                 except Exception as e:
-                    # Nếu URL lỗi hoàn toàn (không tạo được file nào), ghi 1 event FAIL với mã lỗi và tên lỗi chi tiết
+                    # 1.4.B - URL lỗi hoàn toàn: tạo 1 event FAIL và bỏ qua URL này
                     error_code, error_message = build_error_info(e)
                     log.create_event(
                         run=run_entry,
@@ -632,49 +655,51 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                     )
                     continue
 
-            # Cập nhật run log tổng kết
-            success_count = sum(1 for e in run_entry.events if e.status == "SUCCESS")
+            # 1.5 - Tổng kết run: tính success/fail và xác định trạng thái cuối cùng
+            # Trong extract: event thành công có status = 'EXTRACTED'
+            success_count = sum(1 for e in run_entry.events if e.status == "EXTRACTED")
             fail_count = sum(1 for e in run_entry.events if e.status == "FAIL")
             total_links = len(links)
+            now_summary = datetime.now()
 
+            # 1.5.1 - Quy tắc xác định run_status (hình thoi điều kiện trong flow)
+            if total_links > 0 and success_count == 0 and fail_count > 0:
+                run_status = "FAIL"
+            elif not csv_files:
+                run_status = "FAIL"
+            else:
+                # Có ít nhất 1 event thành công
+                run_status = "SUCCESS"
+
+            # 1.5.2 - Cập nhật LogExtractRun với trạng thái cuối + finished_at
             log.update_run(
                 run_entry,
-                status="SUCCESS",
-                finished_at=datetime.now(),
+                status=run_status,
+                finished_at=now_summary,
                 total_links=total_links,
                 success_count=success_count,
                 fail_count=fail_count,
             )
 
-            # -------------------- EMAIL THÔNG BÁO TỔNG KẾT --------------------
-            now = datetime.now()
-
-            # TH1: Tất cả URL đều lỗi (có link, không có event SUCCESS, có event FAIL)
+            # 1.6 - Gửi email tổng kết theo trạng thái run (SUCCESS / FAIL)
+            # - TH1: Tất cả URL đều lỗi (0 event EXTRACTED, có event FAIL)
+            # - TH2: Không tạo được bất kỳ file CSV nào
+            # - TH3: Toàn bộ event thành công, không có event FAIL
             if total_links > 0 and success_count == 0 and fail_count > 0:
+                # 1.6.A - Run FAIL: tất cả URL lỗi
                 msg = (
                     f"Job extract {job_name} run_number={run_number} kết thúc "
                     f"nhưng tất cả URL đều lỗi.\n"
                     f"Total links: {total_links}\n"
                     f"Fail events (theo file): {fail_count}\n"
                 )
-                log_obj = TransformLog(
-                    status="Failure",
-                    record_count=0,
-                    source_name="extract",
-                    table_name="extract",
-                    message=msg,
-                    start_at=run_entry.started_at,
-                    end_at=now,
-                )
-                log_dual_status(
-                    log_obj,
-                    SessionELT,
-                    "ETL Extract: TẤT CẢ URL LỖI",
-                    msg,
+                _send_extract_email(
+                    subject=f"ETL Extract: TẤT CẢ URL LỖI (run {run_number})",
+                    content=msg,
                 )
 
-            # TH2: Không tạo được bất kỳ file CSV nào
             elif not csv_files:
+                # 1.6.B - Run FAIL: không tạo được bất kỳ file CSV nào
                 msg = (
                     f"Job extract {job_name} run_number={run_number} kết thúc "
                     f"nhưng không tạo được file CSV nào.\n"
@@ -682,23 +707,25 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                     f"Success events (theo file): {success_count}\n"
                     f"Fail events (theo file): {fail_count}\n"
                 )
-                log_obj = TransformLog(
-                    status="Failure",
-                    record_count=0,
-                    source_name="extract",
-                    table_name="extract",
-                    message=msg,
-                    start_at=run_entry.started_at,
-                    end_at=now,
+                _send_extract_email(
+                    subject=f"ETL Extract: KHÔNG CÓ FILE CSV NÀO (run {run_number})",
+                    content=msg,
                 )
-                log_dual_status(
-                    log_obj,
-                    SessionELT,
-                    "ETL Extract: KHÔNG CÓ FILE CSV NÀO",
-                    msg,
+
+            elif success_count > 0 and fail_count == 0:
+                # 1.6.C - Run SUCCESS: tất cả event EXTRACTED
+                msg = (
+                    f"Job extract {job_name} run_number={run_number} đã chạy THÀNH CÔNG.\n"
+                    f"Total links: {total_links}\n"
+                    f"Success events (theo file): {success_count}\n"
+                )
+                _send_extract_email(
+                    subject=f"ETL Extract: RUN THÀNH CÔNG (run {run_number})",
+                    content=msg,
                 )
 
         except Exception as e:
+            # 1.7 - Nhánh lỗi không mong đợi: job bị crash giữa chừng
             # Chỉ update run nếu đã tạo được run_entry
             if run_entry is not None:
                 log.update_run(
@@ -707,26 +734,14 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                     finished_at=datetime.now(),
                 )
 
-                # Gửi email khi job extract bị crash giữa chừng
-                now = datetime.now()
+                # 1.7.A - Gửi email cảnh báo JOB CRASH
                 msg = (
                     f"Job extract {job_name} run_number={run_number} gặp lỗi nghiêm trọng "
                     f"và dừng giữa chừng.\nChi tiết: {e}"
                 )
-                log_obj = TransformLog(
-                    status="Failure",
-                    record_count=0,
-                    source_name="extract",
-                    table_name="extract",
-                    message=msg,
-                    start_at=run_entry.started_at,
-                    end_at=now,
-                )
-                log_dual_status(
-                    log_obj,
-                    SessionELT,
-                    "ETL Extract: JOB BỊ CRASH",
-                    msg,
+                _send_extract_email(
+                    subject="ETL Extract: JOB BỊ CRASH",
+                    content=msg,
                 )
 
             raise

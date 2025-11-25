@@ -12,7 +12,12 @@ CONFIG_PATH = DATA_DIR / "config" / "config.json"
 
 def setup_database(config_name, logger, echo: bool = False):
     """
-    Khởi tạo engine + SessionLocal dựa trên cấu hình trong file config.json.
+    1.0.2.x (EXTRACT) - Hàm dùng chung để khởi tạo engine + SessionLocal từ config.json.
+
+    Được gọi bởi connection_elt() trong etl_metadata.setup_db:
+        - Đọc block "db_url" trong config.json, lấy URL tương ứng với `config_name`
+        - Tạo engine + SessionLocal, kiểm tra kết nối (SELECT 1) qua create_engine_and_session
+        - Nếu không kết nối được thì gọi hàm logger (gửi email cảnh báo, ghi log, ...)
 
     Args:
         config_name: tên cấu hình trong block "db_url" của config.json
