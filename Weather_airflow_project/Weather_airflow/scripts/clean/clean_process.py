@@ -1,20 +1,33 @@
 from database.base import session_scope
 from clean.setup_db import *
+
 engine_clean, SessionClean = connection_clean()
 create_table_clean(engine_clean)
+
 from etl_metadata.models import LogExtractEvent
 from database.logger import log_db_status
 import os
+from pathlib import Path
 from sqlalchemy import (
-    create_engine, MetaData, Table,
-    Column, Integer, String, JSON
+    create_engine,
+    MetaData,
+    Table,
+    Column,
+    Integer,
+    String,
+    JSON,
 )
+
 metadata = MetaData()
 from clean.models import Fog, Gale, HeavyRain, Thunderstorms, TCTrack, TC
 import csv
 from clean.clean_functions import CLEAN_FUNCTIONS
-from etl_metadata.models import  CleanLog
+from etl_metadata.models import CleanLog
 from database.logger import log_dual_status
+
+
+# DATA_DIR mount từ docker-compose.airflow.yaml: ./data -> /opt/airflow/data
+DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/airflow/data"))
 
 def get_success_logs():
     with session_scope(SessionELT) as session:
@@ -36,12 +49,15 @@ def get_success_logs():
         ]
 
 def get_all_raw_files():
-    root_path = r"data\\raw"
-    file_paths =[]
-    for root,dirs,files in os.walk(root_path):
+    """
+    Lấy danh sách tất cả file raw dưới thư mục data/raw (trong DATA_DIR).
+    """
+    root_path = DATA_DIR / "raw"
+    file_paths = []
+    for root, dirs, files in os.walk(root_path):
         for file in files:
-            file_paths.append(os.path.join(root,file))
-    return file_paths        
+            file_paths.append(os.path.join(root, file))
+    return file_paths
 
 def get_extracted_files():
     logs = get_success_logs()
@@ -49,14 +65,18 @@ def get_extracted_files():
     for log in logs:
         created_at = log["created_at"]
         file_name = log["file_name"]
-        base_dir = r"data/raw"
+
+        base_dir = DATA_DIR / "raw"
         dir_name = created_at.strftime("%Y%m%d")
-        dir_path = os.path.join(base_dir, dir_name)
-        file_path = os.path.join(dir_path, file_name)
-        success_files.append({
-            "file_path": file_path,
-            "data_type": standardize_table_type(log["data_type"])
-        })
+        dir_path = base_dir / dir_name
+        file_path = dir_path / file_name
+
+        success_files.append(
+            {
+                "file_path": str(file_path),
+                "data_type": standardize_table_type(log["data_type"]),
+            }
+        )
     return success_files
 
 def standardize_table_type(original_type):
