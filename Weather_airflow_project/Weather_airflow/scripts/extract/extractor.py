@@ -17,7 +17,7 @@ from extract.setup_db import SessionELT
 from database.logger import log_dual_status
 from extract.log_service import LogService
 from sqlalchemy import func
-from etl_metadata.models import LogExtractRun, TransformLog
+from etl_metadata.models import LogExtractEvent, LogExtractRun, TransformLog
 
 # Xác định thư mục gốc project và thư mục data dùng chung
 # - Mặc định: <project_root>/data
@@ -475,14 +475,12 @@ def run(links_file_path: str = None, output_dir: str = None) -> None:
                 links = load_links_from_file(links_file_path)
             except FileNotFoundError as e:
                 now = datetime.now()
-                log_obj = TransformLog(
-                    status="Failure",
-                    record_count=0,
-                    source_name=str(links_file_path or "auto-detect links file"),
-                    table_name="extract",
-                    message=f"Không tìm thấy file links: {e}",
-                    start_at=now,
-                    end_at=now,
+                log_obj = LogExtractEvent(
+                    status="FAILED",
+                    step="EXTRACT"
+                    error_message=f"Không tìm thấy file links: {e}",
+                    started_at=now,
+                    finished_at=now,
                 )
                 log_dual_status(
                     log_obj,
