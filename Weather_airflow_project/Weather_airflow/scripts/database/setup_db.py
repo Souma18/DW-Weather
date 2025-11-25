@@ -24,6 +24,7 @@ def setup_database(config_name, logger, echo: bool = False):
         logger: logger để log thông tin kết nối DB
         echo: bật SQLAlchemy echo nếu cần debug
     """
+    # 2.2. Load config từ file config.json 
     # 3.2. Load config từ file config.json 
     db_url = extract_values_from_json(CONFIG_PATH, "db_url")
     url = db_url[config_name]

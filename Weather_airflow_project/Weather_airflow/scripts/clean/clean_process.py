@@ -1,7 +1,8 @@
 from database.base import session_scope
 from clean.setup_db import *
-
+# 2.5 Tạo kết nối với database "db_stage_clean"
 engine_clean, SessionClean = connection_clean()
+# 2.6.1 Tạo các table nếu chưa có
 create_table_clean(engine_clean)
 
 from etl_metadata.models import LogExtractEvent
@@ -104,6 +105,8 @@ def parse_file(file_path):
     return data
 
 def run_clean_and_insert_all():
+    # 2.7. Lấy tất cả các file trong raw\data dựa vào status "EXTRACTED" của table "log_extract_event"
+    # của database "db_etl_metadata"
     files = get_extracted_files()
 
     for file_info in files:
@@ -152,6 +155,7 @@ def run_clean_and_insert_all():
         for idx, row in enumerate(records):
             try:
                 row_dict = dict(zip(headers, row))
+                # 2.8. Chuẩn hóa và làm sạch dữ liệu
                 cleaned = clean_fn(row_dict)
                 if cleaned:
                     batch.append(cleaned)
@@ -171,6 +175,7 @@ def run_clean_and_insert_all():
         # Insert DB
         try:
             with session_scope(SessionClean) as session:
+                # 2.9. Lưu dữ liệu vào database "db_stage_clean" và log vào table "clean_log" của database "db_etl_metadata" với status CLEANED
                 session.add_all(batch)
                 print(f"[OK] Inserted {inserted_count} rows from {data_type}")
 

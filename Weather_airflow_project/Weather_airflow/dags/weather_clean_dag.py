@@ -21,7 +21,7 @@ default_args = {
     "retry_delay": timedelta(minutes=10),
 }
 
-
+# 2.1. Khởi chạy tự động clean lúc 7h
 with DAG(
     dag_id="weather_clean_dag",
     description="Clean raw CSV weather data into staging tables",
