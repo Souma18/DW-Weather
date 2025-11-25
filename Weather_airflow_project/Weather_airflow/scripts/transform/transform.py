@@ -1,24 +1,25 @@
 from datetime import datetime
+from utils.date_utils import date_now
 from transform.setup_db import *
 engine_transform, SessionTransform = connection_transform()
 create_table_transform(engine_transform)
 from database.base import session_scope
 from database.logger import log_db_status
-from transform.check_log import success_logs
-from etl_metadata.models import TransformLog
+from transform.check_log import get_success_logs
+from etl_metadata.models import CleanLog, TransformLog
 from transform.models import *
 from clean.models import *
 
 class TransformLogger:
     def __init__(self):
         self.logs = {
-            "dim_location": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
-            "dim_cyclone": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
-            "fact_heavy_rain_snow": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
-            "fact_gale": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
-            "fact_fog": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
-            "fact_thunderstorm": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
-            "fact_cyclone_track": {"record_count": 0, "source_name": [], "start_at": datetime.now(), "end_at": None},
+            "dim_location": {"record_count": 0, "source_name": [], "start_at": date_now(), "end_at": None},
+            "dim_cyclone": {"record_count": 0, "source_name": [], "start_at": date_now(), "end_at": None},
+            "fact_heavy_rain_snow": {"record_count": 0, "source_name": [], "start_at": date_now(), "end_at": None},
+            "fact_gale": {"record_count": 0, "source_name": [], "start_at": date_now(), "end_at": None},
+            "fact_fog": {"record_count": 0, "source_name": [], "start_at": date_now(), "end_at": None},
+            "fact_thunderstorm": {"record_count": 0, "source_name": [], "start_at": date_now(), "end_at": None},
+            "fact_cyclone_track": {"record_count": 0, "source_name": [], "start_at": date_now(), "end_at": None},
         }
 
     def update(self, table_name, source_name, dt):
@@ -42,7 +43,7 @@ class TransformLogger:
                 table_name=table_name,
                 message=msg,
                 start_at=log_data["start_at"],
-                end_at=log_data["end_at"] if log_data["end_at"] else datetime.now(),
+                end_at=log_data["end_at"] if log_data["end_at"] else date_now(),
             )
             
             log_db_status(
@@ -66,7 +67,7 @@ def get_or_create_location(session, clean_obj, logger, source_name=None):
             lat=clean_obj.lat,
             lon=clean_obj.lon,
             country=clean_obj.country,
-            createdAt=datetime.now(),
+            createdAt=date_now(),
         )
         session.add(location)
         session.flush()
@@ -91,7 +92,7 @@ def get_or_create_cyclone(session, clean_obj, logger,isGetter=True, source_name=
     if cyclone is None:
         cyclone = DimCyclone(
             sys_id = clean_obj.sysid,
-            updatedAt=datetime.now(),
+            updatedAt=date_now(),
         )
         session.add(cyclone)
         session.flush()
@@ -117,7 +118,7 @@ def transform_heavy_rain(clean_obj, session, logger, source_name=None):
         location_id=location.id,
         rainfall_mm=clean_obj.hvyrain,
         hp=clean_obj.hp,
-        createdAt=datetime.now(),
+        createdAt=date_now(),
     )
     session.add(heavy_rain)
     logger.update("fact_heavy_rain_snow", source_name, heavy_rain.createdAt)
@@ -143,7 +144,7 @@ def transform_thunderstorm(clean_obj, session, logger, source_name=None):
         event_datetime=clean_obj.datetime,
         thunderstorms_index=clean_obj.thunderstorms,
         hp=clean_obj.hp,
-        createdAt=datetime.now(),
+        createdAt=date_now(),
     )
     session.add(thunderstorm)
     logger.update("fact_thunderstorm", source_name, thunderstorm.createdAt)
@@ -170,7 +171,7 @@ def transform_fog(clean_obj, session, logger, source_name=None):
         fog_index=clean_obj.fog,
         visibility=str(clean_obj.visibility) if clean_obj.visibility is not None else None,
         hp=clean_obj.hp,
-        createdAt=datetime.now(),
+        createdAt=date_now(),
     )
     session.add(fog)
     logger.update("fact_fog", source_name, fog.createdAt)
@@ -199,7 +200,7 @@ def transform_gale(clean_obj, session, logger, source_name=None):
         degrees=clean_obj.degrees,
         direction=clean_obj.direction,
         hp=clean_obj.hp,
-        createdAt=datetime.now(),
+        createdAt=date_now(),
     )
     session.add(gale)
     logger.update("fact_gale", source_name, gale.createdAt)
@@ -257,7 +258,7 @@ def transform_cyclone_track(clean_obj, session, logger, source_name=None):
         SWQ_nm=clean_obj.SWQ_nm,
         NWQ_nm=clean_obj.NWQ_nm,
         center_id=clean_obj.center_id,
-        createdAt=datetime.now(),
+        createdAt=date_now(),
     )
     session.add(track)
     logger.update("fact_cyclone_track", source_name, track.createdAt)
@@ -274,19 +275,19 @@ TRANSFORM_HANDLERS = {
 
 def run_transform():
     logger = TransformLogger()
-    
+    success_logs = get_success_logs()
     with session_scope(SessionClean) as session_clean:
         # Phân loại logs: ưu tiên 'tc' trước
-        tc_logs = [log for log in success_logs if log.get("table_type") == "tc"]
-        other_logs = [log for log in success_logs if log.get("table_type") != "tc"]
+        tc_logs = [log for log in success_logs if log.table_type == "tc"]
+        other_logs = [log for log in success_logs if log.table_type != "tc"]
         
         # Gộp lại danh sách để xử lý: tc trước, các loại khác sau
         sorted_logs = tc_logs + other_logs
 
         for log in sorted_logs:
-            table_type = log["table_type"]
-            start_index = log["start_index"]
-            end_index = log["end_index"]
+            table_type = log.table_type
+            start_index = log.start_index
+            end_index = log.end_index
             
             handler_tuple = TRANSFORM_HANDLERS.get(table_type)
             if not handler_tuple:
@@ -302,5 +303,8 @@ def run_transform():
             
             with session_scope(SessionTransform) as session_trans:
                 for clean_obj in clean_objs:
-                    handler_fn(clean_obj, session_trans, logger, source_name=log["file_name"])
+                    handler_fn(clean_obj, session_trans, logger, source_name=log.file_name)
+                    with session_scope(SessionELT) as session_elt:
+                        session_elt.query(CleanLog).filter(CleanLog.id == clean_obj.id).update(
+                            {"status": "TRANSFORMED"})                
     logger.save_logs()

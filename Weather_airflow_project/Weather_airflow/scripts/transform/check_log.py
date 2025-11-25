@@ -1,28 +1,64 @@
-from sqlalchemy import inspect
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
 from transform.setup_db import SessionELT
 from database.base import session_scope
 from database.logger import log_dual_status
 from etl_metadata.models import CleanLog, TransformLog
-from datetime import datetime
+from utils.date_utils import date_now
 
-def row_to_dict(row):
-    return {c.key: getattr(row, c.key) for c in inspect(row).mapper.column_attrs}
-today_start = datetime.combine(datetime.today(), datetime.min.time())
-success_logs = []
-with session_scope(SessionELT) as session:
-    success_logs = session.query(CleanLog).filter(
-        CleanLog.status == "CLEANED"
-    ).all()
-    success_logs = [row_to_dict(r) for r in success_logs]  # convert ORM → dict
+today_start = date_now()
 
-    if not success_logs:
-        transform_log = TransformLog(
-            status="FAILED",
-            record_count=0,
-            message="Hôm nay job clean chưa có dữ liệu mới.",
-            start_at=today_start,
-            end_at=datetime.now()
-        )
-        log_dual_status(transform_log, SessionELT,
-                        subject="Lỗi hệ thống DW-Weather",
-                        content="Hôm nay job clean chưa có dữ liệu mới.")
+@dataclass
+class CleanLogObj:
+    id: int
+    file_name: str
+    process_time: datetime
+    status: str
+    total_rows: Optional[int] = None
+    inserted_rows: Optional[int] = None
+    error_msg: Optional[str] = None
+    start_index: Optional[int] = None
+    end_index: Optional[int] = None
+    fail_range: Optional[str] = None
+    table_type: Optional[str] = None
+
+def get_success_logs():
+    """
+    Lấy danh sách logs có status 'CLEANED' dưới dạng object detached (không link ORM)
+    """
+    with session_scope(SessionELT) as session:
+        logs = session.query(CleanLog).filter(CleanLog.status == "CLEANED").all()
+
+        if not logs:
+            transform_log = TransformLog(
+                status="FAILED",
+                record_count=0,
+                message="Hôm nay job clean chưa có dữ liệu mới.",
+                start_at=today_start,
+                end_at=date_now()
+            )
+            log_dual_status(transform_log, SessionELT,
+                            subject="Lỗi hệ thống DW-Weather",
+                            content="Hôm nay job clean chưa có dữ liệu mới.")
+            return []
+
+        # Chuyển sang object detached
+        detached_logs = [
+            CleanLogObj(
+                id=log.id,
+                file_name=log.file_name,
+                process_time=log.process_time,
+                status=log.status,
+                total_rows=log.total_rows,
+                inserted_rows=log.inserted_rows,
+                error_msg=log.error_msg,
+                start_index=log.start_index,
+                end_index=log.end_index,
+                fail_range=log.fail_range,
+                table_type=log.table_type,
+            )
+            for log in logs
+        ]
+
+        return detached_logs
