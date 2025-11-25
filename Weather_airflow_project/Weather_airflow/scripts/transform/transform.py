@@ -1,9 +1,11 @@
 from datetime import datetime
 from utils.date_utils import date_now
 from transform.setup_db import *
+# 3.6.1 Tạo kết nối với database "db_stage_transform"
 engine_transform, SessionTransform = connection_transform()
+# 3.7 Tạo các table nếu chưa có
 create_table_transform(engine_transform)
-from database.base import session_scope
+from database.base import session_scope 
 from database.logger import log_db_status
 from transform.check_log import get_success_logs
 from etl_metadata.models import CleanLog, TransformLog
@@ -275,6 +277,7 @@ TRANSFORM_HANDLERS = {
 
 def run_transform():
     logger = TransformLogger()
+    # 3.8. Lấy tất cả các log có status "SUCCESS" của table "clean_log" trong database "db_etl_metadata"
     success_logs = get_success_logs()
     with session_scope(SessionClean) as session_clean:
         # Phân loại logs: ưu tiên 'tc' trước
@@ -282,19 +285,20 @@ def run_transform():
         other_logs = [log for log in success_logs if log.table_type != "tc"]
         
         # Gộp lại danh sách để xử lý: tc trước, các loại khác sau
+        # 3.10. Sắp xếp log có thuộc tính "table_type" là "tc" trước các loại còn lại
         sorted_logs = tc_logs + other_logs
 
         for log in sorted_logs:
             table_type = log.table_type
             start_index = log.start_index
             end_index = log.end_index
-            
+            # 3.11. Lấy handler phù hợp với từng "table_type" để xử lý
             handler_tuple = TRANSFORM_HANDLERS.get(table_type)
             if not handler_tuple:
                 continue
                 
             clean_model_cls, handler_fn = handler_tuple
-            
+            # 3.12. Lấy clean model từ database "db_stage_clean"
             clean_objs = (
                 session_clean.query(clean_model_cls)
                 .filter(clean_model_cls.id >= start_index, clean_model_cls.id <= end_index)
@@ -303,8 +307,10 @@ def run_transform():
             
             with session_scope(SessionTransform) as session_trans:
                 for clean_obj in clean_objs:
+                    # 3.13. Gọi handler phù hợp
                     handler_fn(clean_obj, session_trans, logger, source_name=log.file_name)
                     with session_scope(SessionELT) as session_elt:
                         session_elt.query(CleanLog).filter(CleanLog.id == clean_obj.id).update(
-                            {"status": "TRANSFORMED"})                
+                            {"status": "TRANSFORMED"})
+    # 3.14. Lưu log lại quá trình xử lý vào table "transform_log" của database "db_etl_metadata"
     logger.save_logs()

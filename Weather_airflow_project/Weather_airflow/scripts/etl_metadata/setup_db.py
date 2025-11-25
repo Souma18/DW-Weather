@@ -22,6 +22,7 @@ def connection_elt():
     """
     engine_elt, SessionELT = setup_database(
         "elt_db_url",
+        # 3.4.2 Gửi mail thông báo.
         lambda: log_email_status(
             subject="LỖi hệ thống warehouse",
             content="Không thể kết nối với db db_elt_metadata",

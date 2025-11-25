@@ -38,6 +38,7 @@ def get_success_logs():
                 start_at=today_start,
                 end_at=date_now()
             )
+            # 3.9.2 Lưu Log thất bại vào table "transform_log" của database "db_etl_metadata" 
             log_dual_status(transform_log, SessionELT,
                             subject="Lỗi hệ thống DW-Weather",
                             content="Hôm nay job clean chưa có dữ liệu mới.")
@@ -60,5 +61,5 @@ def get_success_logs():
             )
             for log in logs
         ]
-
+        # 3.9.1 Trả lại danh sách success_logs
         return detached_logs
